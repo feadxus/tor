@@ -1097,6 +1097,11 @@ struct or_options_t {
    * report bandwidth observations from this period? */
   int TestingMinTimeToReportBandwidth;
 
+  /** Autobool: true if we should use the relay message with relays supporting
+   * protocol version Relay=5. Set to -1 indicating that the consensus decide.
+   * Default to 0. */
+  int UseRelayMessage;
+
   /**
    * Configuration objects for individual modules.
    *

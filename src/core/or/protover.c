@@ -26,6 +26,7 @@
 #include "core/or/congestion_control_common.h"
 #include "core/or/extend_info_st.h"
 #include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "core/or/versions.h"
 #include "lib/tls/tortls.h"
 
@@ -927,7 +928,7 @@ protover_build_ntor3_ext_request(const extend_info_t *ei)
     trn_ntorv3_ext_subproto_add_reqs(req, proto_req);
   }
   /* Build the RelayCell version request. */
-  if (ei->supports_relay_cell_proto) {
+  if (relay_msg_is_enabled() && ei->supports_relay_cell_proto) {
     trn_ntorv3_ext_subproto_req_t *proto_req =
       trn_ntorv3_ext_subproto_req_new();
     trn_ntorv3_ext_subproto_req_set_proto_id(proto_req, PRT_RELAY_CELL);

@@ -84,6 +84,7 @@
 #include "core/or/scheduler.h"
 #include "feature/hs/hs_metrics.h"
 #include "feature/stats/rephist.h"
+#include "core/or/relay_msg.h"
 
 #include "core/or/cell_st.h"
 #include "core/or/cell_queue_st.h"
@@ -3372,6 +3373,9 @@ relay_consensus_has_changed(const networkstatus_t *ns)
     get_param_max_circuit_cell_queue_size(ns);
   max_circuit_cell_queue_size_out =
     get_param_max_circuit_cell_queue_size_out(ns);
+
+  /* Inform our relay message library. */
+  relay_msg_consensus_has_changed(ns);
 }
 
 /** Add <b>cell</b> to the queue of <b>circ</b> writing to <b>chan</b>
