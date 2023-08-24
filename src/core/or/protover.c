@@ -59,6 +59,7 @@ static const struct {
   { PRT_CONS, "Cons" },
   { PRT_FLOWCTRL, "FlowCtrl"},
   { PRT_CONFLUX, "Conflux"},
+  { PRT_RELAY_CELL, "RelayCell"},
 };
 
 #define N_PROTOCOL_NAMES ARRAY_LENGTH(PROTOCOL_NAMES)
@@ -406,7 +407,8 @@ protocol_list_supports_protocol_or_later(const char *list,
 #endif
 #define PR_MICRODESC_V "1-2"
 #define PR_PADDING_V   "2"
-#define PR_RELAY_V     "1-4"
+#define PR_RELAY_V     "1-5"
+#define PR_RELAY_CELL_V "1"
 
 /** Return the string containing the supported version for the given protocol
  * type. */
@@ -427,6 +429,7 @@ protover_get_supported(const protocol_type_t type)
   case PRT_MICRODESC: return PR_MICRODESC_V;
   case PRT_PADDING: return PR_PADDING_V;
   case PRT_RELAY: return PR_RELAY_V;
+  case PRT_RELAY_CELL: return PR_RELAY_CELL_V;
   default:
     tor_assert_unreached();
   }
@@ -489,7 +492,8 @@ protover_get_supported_protocols(void)
     "LinkAuth=" PR_LINKAUTH_V " "
     "Microdesc=" PR_MICRODESC_V " "
     "Padding=" PR_PADDING_V " "
-    "Relay=" PR_RELAY_V;
+    "Relay=" PR_RELAY_V " "
+    "RelayCell=" PR_RELAY_CELL_V;
 }
 
 /*

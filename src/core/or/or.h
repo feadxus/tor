@@ -747,6 +747,9 @@ typedef struct protover_summary_flags_t {
   /** True iff this router supports ntorv3 subproto request extension. Requires
    * Relay=5. */
   unsigned int supports_ntorv3_subproto : 1;
+
+  /** True iff this router supports the RelayCell=1 protocol. */
+  unsigned int supports_relay_cell_proto : 1;
 } protover_summary_flags_t;
 
 typedef struct routerinfo_t routerinfo_t;
