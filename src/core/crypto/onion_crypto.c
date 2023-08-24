@@ -33,6 +33,7 @@
 #include "core/or/or.h"
 #include "core/or/extendinfo.h"
 #include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "core/crypto/onion_crypto.h"
 #include "core/crypto/onion_fast.h"
 #include "core/crypto/onion_ntor.h"
@@ -93,6 +94,14 @@ parse_subproto_extension(const trn_extension_field_t *field,
       }
       params_out->subproto.flow_ctrl = req->proto_version;
       params_out->cc_enabled = true;
+      break;
+    case PRT_RELAY_CELL:
+      if (!relay_msg_is_enabled() ||
+          !protover_is_supported_here(PRT_RELAY_CELL, req->proto_version)) {
+        ret = false;
+        goto end;
+      }
+      params_out->subproto.relay_cell = req->proto_version;
       break;
     default:
       /* Reject any unknown values. */
@@ -444,6 +453,12 @@ validate_ntor3_params_server(const circuit_params_t *our_ns_params,
   circ_params->cc_enabled =
       circ_params->cc_enabled && our_ns_params->cc_enabled;
 
+  /* If the circuit relay cell protocol version is higher than ours it means we
+   * don't support it so error. */
+  if (circ_params->subproto.relay_cell > our_ns_params->subproto.relay_cell) {
+    return false;
+  }
+
   return true;
 }
 
@@ -466,8 +481,6 @@ negotiate_v3_ntor_server_circ_params(const uint8_t *param_request_msg,
                                      uint8_t **resp_msg_out,
                                      size_t *resp_msg_len_out)
 {
-  int ret = -1;
-
   /* Failed to parse the extension. */
   if (!parse_ntor3_server_ext(param_request_msg, param_request_len,
                               params_out)) {
@@ -491,10 +504,10 @@ negotiate_v3_ntor_server_circ_params(const uint8_t *param_request_msg,
   params_out->sendme_inc_cells = our_ns_params->sendme_inc_cells;
 
   /* Success. */
-  ret = 0;
+  return 0;
 
  err:
-  return ret;
+  return -1;
 }
 
 /* This is the maximum value for keys_out_len passed to

@@ -45,6 +45,8 @@ struct extend_info_t {
   /** True iff this hop supports the ntorv3 subprotocol request which is
    * defined by Relay=5 */
   bool supports_ntorv3_subproto_req;
+  /** True iff this hop supports the RelayCell=1 protocol. */
+  bool supports_relay_cell_proto;
 };
 
 #endif /* !defined(EXTEND_INFO_ST_H) */

@@ -29,6 +29,7 @@ void onion_handshake_state_release(onion_handshake_state_t *state);
 /** Negotiated subprotocol versions set after a ntorv3 handshake. */
 typedef struct circuit_subproto_t {
   uint8_t flow_ctrl;
+  uint8_t relay_cell;
 } circuit_subproto_t;
 
 /**

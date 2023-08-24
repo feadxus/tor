@@ -24,6 +24,7 @@
 #include "core/or/connection_or.h"
 #include "core/or/congestion_control_common.h"
 #include "core/or/congestion_control_flow.h"
+#include "core/or/protover.h"
 #include "app/config/config.h"
 #include "core/mainloop/cpuworker.h"
 #include "lib/crypt_ops/crypto_rand.h"
@@ -625,6 +626,7 @@ assign_onionskin_to_cpuworker(or_circuit_t *circ,
    * circuit negotiation into the CPU worker context */
   req.circ_ns_params.cc_enabled = congestion_control_enabled();
   req.circ_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
+  req.circ_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
 
   job = tor_malloc_zero(sizeof(cpuworker_job_t));
   job->circ = circ;

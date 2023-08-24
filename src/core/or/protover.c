@@ -926,6 +926,15 @@ protover_build_ntor3_ext_request(const extend_info_t *ei)
                                                   PROTOVER_FLOWCTRL_CC);
     trn_ntorv3_ext_subproto_add_reqs(req, proto_req);
   }
+  /* Build the RelayCell version request. */
+  if (ei->supports_relay_cell_proto) {
+    trn_ntorv3_ext_subproto_req_t *proto_req =
+      trn_ntorv3_ext_subproto_req_new();
+    trn_ntorv3_ext_subproto_req_set_proto_id(proto_req, PRT_RELAY_CELL);
+    trn_ntorv3_ext_subproto_req_set_proto_version(proto_req,
+                                                  PROTOVER_RELAY_CELL_PROTO);
+    trn_ntorv3_ext_subproto_add_reqs(req, proto_req);
+  }
 
   /* Encoding into an extension field. */
   ret = trn_ntorv3_ext_subproto_encoded_len(req);
