@@ -52,6 +52,7 @@
 #include "core/or/policies.h"
 #include "core/or/protover.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/trace_probes_circuit.h"
 #include "core/or/crypt_path.h"
 #include "feature/client/bridges.h"
@@ -1321,11 +1322,11 @@ circuit_finish_handshake(origin_circuit_t *circ,
 
   log_debug(LD_CIRC, "Hop %s handshake finished with relay cell proto: %u.",
             extend_info_describe(hop->extend_info),
-            params.relay_cell_proto_version);
+            params.subproto.relay_cell);
 
   /* Allocate our relay message codec based on the negotiated relay cell
    * protover. If none was negotiated, the default is version 0. */
-  relay_msg_codec_init(&hop->relay_msg_codec, params.relay_cell_proto_version);
+  relay_msg_codec_init(&hop->relay_msg_codec, params.subproto.relay_cell);
 
   if (params.cc_enabled) {
     int circ_len = circuit_get_cpath_len(circ);

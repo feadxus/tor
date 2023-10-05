@@ -29,6 +29,10 @@ void relay_msg_codec_clear(relay_msg_codec_t *codec);
 bool relay_msg_decode_cell(relay_msg_codec_t *codec, const cell_t *cell);
 bool relay_msg_encode_msg(relay_msg_codec_t *codec, const relay_msg_t *msg);
 
+/* Consumer */
+smartlist_t *relay_msg_take_ready_cells(relay_msg_codec_t *codec);
+smartlist_t *relay_msg_take_ready_msgs(relay_msg_codec_t *codec);
+
 #ifdef RELAY_MSG_PRIVATE
 
 #endif /* RELAY_MSG_PRIVATE */

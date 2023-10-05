@@ -789,3 +789,29 @@ relay_msg_encode_msg(relay_msg_codec_t *codec, const relay_msg_t *msg)
  error:
   return false;
 }
+
+/** Return all ready cell(s). This function takes them out of the encoder and
+ * so the caller takes ownership of them.
+ *
+ * The list might be empty if no messages are ready. */
+smartlist_t *
+relay_msg_take_ready_cells(relay_msg_codec_t *codec)
+{
+  tor_assert(codec);
+  smartlist_t *ready = codec->encoder.ready_cells;
+  codec->encoder.ready_cells = smartlist_new();
+  return ready;
+}
+
+/** Return all ready relay message(s). This function takes them out of the
+ * decoder and so the caller takes ownership of them.
+ *
+ * The list might be empty if no messages are ready. */
+smartlist_t *
+relay_msg_take_ready_msgs(relay_msg_codec_t *codec)
+{
+  tor_assert(codec);
+  smartlist_t *ready = codec->decoder.ready;
+  codec->decoder.ready = smartlist_new();
+  return ready;
+}

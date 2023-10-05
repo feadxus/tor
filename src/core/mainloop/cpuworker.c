@@ -25,6 +25,7 @@
 #include "core/or/congestion_control_common.h"
 #include "core/or/congestion_control_flow.h"
 #include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "app/config/config.h"
 #include "core/mainloop/cpuworker.h"
 #include "lib/crypt_ops/crypto_rand.h"
@@ -448,7 +449,7 @@ cpuworker_onion_handshake_replyfn(void *work_)
 
   /* Setup our codec with the negotiated verseion. */
   relay_msg_codec_init(&TO_CIRCUIT(circ)->relay_msg_codec,
-                       rpl.circ_params.relay_cell_proto_version);
+                       rpl.circ_params.subproto.relay_cell);
 
   if (onionskin_answer(circ,
                        &rpl.created_cell,
@@ -461,7 +462,7 @@ cpuworker_onion_handshake_replyfn(void *work_)
 
   log_info(LD_OR, "Circuit onionskin handshake succeeded. Yay. "
                   "Relay cell protocol version: %u",
-           rpl.circ_params.relay_cell_proto_version);
+           rpl.circ_params.subproto.relay_cell);
 
  done_processing:
   memwipe(&rpl, 0, sizeof(rpl));

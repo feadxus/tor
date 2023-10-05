@@ -391,7 +391,7 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
       return;
     }
     relay_msg_codec_init(&TO_CIRCUIT(circ)->relay_msg_codec,
-                         params.relay_cell_proto_version);
+                         params.subproto.relay_cell);
     memwipe(keys, 0, sizeof(keys));
   }
 }
