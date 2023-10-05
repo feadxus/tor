@@ -584,6 +584,7 @@ relay_send_command_from_edge_,(streamid_t stream_id, circuit_t *orig_circ,
 
   /* If conflux is enabled, decide which leg to send on, and use that */
   if (orig_circ->conflux && conflux_should_multiplex(relay_command)) {
+    /* XXX Safe to call twice because... */
     circ = conflux_decide_circ_for_send(orig_circ->conflux, orig_circ,
                                         relay_command);
     if (BUG(!circ)) {
@@ -2203,15 +2204,37 @@ circuit_reset_sendme_randomness(circuit_t *circ)
 STATIC size_t
 connection_edge_get_inbuf_bytes_to_package(size_t n_available,
                                            int package_partial,
-                                           circuit_t *on_circuit)
+                                           circuit_t *on_circuit,
+                                           crypt_path_t *cpath)
 {
+  circuit_t *circ = on_circuit;
+
   if (!n_available)
     return 0;
 
+  if (on_circuit->conflux) {
+    /* This call will queue any SWITCH command that are needed in case of a
+     * change of circuit meaning that our target lenght to read will take into
+     * account the size of that switch message.
+     *
+     * XXX: Safe to call twice...
+     * */
+    circ = conflux_decide_circ_for_send(on_circuit->conflux, on_circuit,
+                                        RELAY_COMMAND_DATA);
+    if (BUG(!circ)) {
+      /* Put back the original circuit as we can't decide the next one. */
+      circ = on_circuit;
+      conflux_log_set(LOG_WARN, circ->conflux, CIRCUIT_IS_ORIGIN(circ));
+    }
+    if (cpath) {
+      cpath = conflux_get_destination_hop(circ);
+    }
+  }
+
   /* Do we need to force this payload to have space for randomness? */
   const bool force_random_bytes =
-    (on_circuit->send_randomness_after_n_cells == 0) &&
-    (! on_circuit->have_sent_sufficiently_random_cell);
+    (circ->send_randomness_after_n_cells == 0) &&
+    (!circ->have_sent_sufficiently_random_cell);
 
   /* At most how much would we like to send in this cell? */
   size_t target_length;
@@ -2238,18 +2261,18 @@ connection_edge_get_inbuf_bytes_to_package(size_t n_available,
   if (package_length <= RELAY_PAYLOAD_LENGTH_FOR_RANDOM_SENDMES) {
     /* This cell will have enough randomness in the padding to make a future
      * sendme cell unpredictable. */
-    on_circuit->have_sent_sufficiently_random_cell = 1;
+    circ->have_sent_sufficiently_random_cell = 1;
   }
 
-  if (on_circuit->send_randomness_after_n_cells == 0) {
+  if (circ->send_randomness_after_n_cells == 0) {
     /* Either this cell, or some previous cell, had enough padding to
      * ensure sendme unpredictability. */
-    tor_assert_nonfatal(on_circuit->have_sent_sufficiently_random_cell);
+    tor_assert_nonfatal(circ->have_sent_sufficiently_random_cell);
     /* Pick a new interval in which we need to send randomness. */
-    circuit_reset_sendme_randomness(on_circuit);
+    circuit_reset_sendme_randomness(circ);
   }
 
-  --on_circuit->send_randomness_after_n_cells;
+  --circ->send_randomness_after_n_cells;
 
   return package_length;
 }
@@ -2327,7 +2350,8 @@ connection_edge_package_raw_inbuf(edge_connection_t *conn, int package_partial,
   }
 
   length = connection_edge_get_inbuf_bytes_to_package(bytes_to_process,
-                                                      package_partial, circ);
+                                                      package_partial, circ,
+                                                      cpath_layer);
   if (!length)
     return 0;
 

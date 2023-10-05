@@ -139,7 +139,8 @@ STATIC int connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
                                    crypt_path_t *layer_hint);
 STATIC size_t connection_edge_get_inbuf_bytes_to_package(size_t n_available,
                                                       int package_partial,
-                                                      circuit_t *on_circuit);
+                                                      circuit_t *on_circuit,
+                                                      crypt_path_t *cpath);
 
 #endif /* defined(RELAY_PRIVATE) */
 
