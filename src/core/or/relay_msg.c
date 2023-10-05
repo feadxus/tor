@@ -105,6 +105,26 @@ get_relay_msg_max_body(const uint8_t cmd, const uint8_t relay_cell_proto)
   }
 }
 
+/** Return the encoded length of the given relay message. */
+static size_t
+get_relay_msg_encoded_len(const relay_msg_t *msg)
+{
+  return msg->length +
+         get_relay_msg_header_size(msg->command, msg->relay_cell_proto);
+}
+
+/** Return the length of all packable message in the given codec queue. */
+static size_t
+get_packable_msg_encoded_len(const relay_msg_codec_t *codec)
+{
+  size_t len = 0;
+  SMARTLIST_FOREACH_BEGIN(codec->pending_packable_msg,
+                          const relay_msg_t *, msg) {
+    len += get_relay_msg_encoded_len(msg);
+  } SMARTLIST_FOREACH_END(msg);
+  return len;
+}
+
 /** Parse the relay message header from the given payload and sets the value in
  * the relay message.
  *
@@ -435,6 +455,209 @@ decoder_unframe_cell_v1(const cell_t *cell, relay_msg_decoder_t *decoder)
   return ret;
 }
 
+/** Encode into the given payload the body of the message. Make sure we won't
+ * overrun the maximum allowed body size. */
+static void
+encode_relay_msg_body(const relay_msg_t *msg, uint8_t *payload)
+{
+  /* Code flow error reaching this point. */
+  tor_assert(msg->length <=
+             get_relay_msg_max_body(msg->command, msg->relay_cell_proto));
+  memcpy(payload, msg->body, msg->length);
+}
+
+/** Encode relay message for relay cell protocol version 0.
+ *
+ * Return the length of the encoded message. */
+static void
+encode_relay_msg_v0(const relay_msg_t *msg, relay_msg_codec_t *codec)
+{
+  relay_header_t rh;
+  cell_t *cell = tor_malloc_zero(sizeof(*cell));
+
+  memset(&rh, 0, sizeof(rh));
+
+  /* Construct part of the relay cell header. */
+  cell->command = CELL_RELAY;
+  cell->relay_cell_proto = 0;
+
+  /* Construct the relay message header. */
+  rh.command = msg->command;
+  rh.stream_id = msg->stream_id;
+  rh.length = msg->length;
+
+  /* Pack header. */
+  relay_header_pack(cell->payload, &rh);
+
+  /* Code flow error reaching this point. */
+  tor_assert(msg->length <=
+             get_relay_msg_max_body(msg->command, msg->relay_cell_proto));
+
+  /* Set payload which also takes care of padding. */
+  relay_cell_set_payload(cell, msg->body, msg->length);
+
+  /* Put the cell in the ready queue, it is ready to be sent. */
+  smartlist_add(codec->encoder.ready_cells, cell);
+}
+
+/** Encode the given relay message into the given payload of size payload_len.
+ *
+ * Return the number of encoded bytes on success else 0 on error indicating the
+ * payload has not enough room. The payload is zeroed for safety purposes in
+ * that case. */
+static size_t
+encode_one_relay_msg_v1(const relay_msg_t *msg, uint8_t *payload,
+                        const size_t payload_len)
+{
+/* Helper macro to check for available room in the payload. The caller of this
+ * function should always check that the message fits in the given payload but
+ * we are never too careful in the world of C-live-ammo. */
+#undef CHECK_AVAILABLE_ROOM
+#define CHECK_AVAILABLE_ROOM(__wanted_len)            \
+  do {                                                \
+    if (BUG((offset + __wanted_len) > payload_len)) { \
+      goto error;                                     \
+    }                                                 \
+  } while (0)
+
+  size_t offset = 0;
+
+  /* Relay message header. First the command. */
+  CHECK_AVAILABLE_ROOM(sizeof(uint8_t));
+  set_uint8(payload, msg->command);
+  offset += sizeof(msg->command);
+  /* Second the length of the body. */
+  CHECK_AVAILABLE_ROOM(sizeof(uint16_t));
+  set_uint16(payload + offset, htons(msg->length));
+  offset += sizeof(msg->length);
+
+  /* Optional routing header. */
+  if (relay_command_requires_stream_id(msg->command)) {
+    /* Safety checks, sending a value of 0 would be a protocol violation. */
+    if (BUG(msg->stream_id == 0)) {
+      goto error;
+    }
+    CHECK_AVAILABLE_ROOM(sizeof(uint16_t));
+    set_uint16(payload + offset, htons(msg->stream_id));
+    offset += sizeof(msg->stream_id);
+  }
+
+  /* Put the message body into the payload. */
+  CHECK_AVAILABLE_ROOM(msg->length);
+  encode_relay_msg_body(msg, payload + offset);
+  offset += msg->length;
+
+  return offset;
+
+ error:
+  memset(payload, 0, payload_len);
+  return 0;
+}
+
+/** Encode relay message for using the given codec for protocol version 1. This
+ * function will opportunistically pack pending cells along the given message.
+ *
+ * Return the length of the encoded message on success. On error, 0 is
+ * returned. */
+static size_t
+encode_relay_msg_v1(const relay_msg_t *msg, relay_msg_codec_t *codec)
+{
+/* Useful macro to advance our variables but also check for overflow. */
+#undef ADVANCE_CHECKED
+#define ADVANCE_CHECKED(__wanted_len)         \
+  do {                                        \
+    if (BUG(__wanted_len > available_len)) {  \
+      goto error;                             \
+    }                                         \
+    offset += __wanted_len;                   \
+    encoded_len += __wanted_len;              \
+    available_len -= __wanted_len;            \
+  } while (0)
+
+  size_t len;
+
+  /* We use this value through out this function so keep it const. */
+  const size_t max_payload_size =
+    relay_cell_get_payload_size(codec->relay_cell_proto);
+
+  /* XXX: We allocate the cell at the moment in order to queue it in the
+   * encoder ready list. We could think of a future change where we have
+   * pre-allocated cells in the encoder that we would reuse instead. */
+  cell_t *cell = tor_malloc_zero(sizeof(*cell));
+
+  /* Construct part of the relay cell header. The circuit id is set before
+   * sending on the actual circuit. */
+  cell->command = CELL_RELAY;
+  cell->relay_cell_proto = codec->relay_cell_proto;
+
+  /* First field of the relay cell header: recognized. */
+  set_uint16(cell->payload, 0);
+  /* Digest is set before sending once the payload is finalized. */
+
+  /* How many bytes have we encoded in the cell payload. */
+  size_t encoded_len = 0;
+
+  /* This is the amount of bytes we have available for the relay message(s). It
+   * changes through out this function and used for overflow checks. */
+  size_t available_len = max_payload_size;
+
+  /* Start encoding after the relay cell header. */
+  size_t offset = relay_cell_get_header_size(codec->relay_cell_proto);
+
+  /* We are looking to build a cell that contains at least this amount of
+   * bytes. The message plus the pending packable cells. */
+  size_t total_len = get_relay_msg_encoded_len(msg) +
+                     get_packable_msg_encoded_len(codec);
+  if (BUG(total_len > available_len)) {
+    /* XXX There is a world I think where the maze could make this happen. If
+     * we see this happening, we can try to fix the maze or declare that this
+     * is fine and handle this case by creating a cell with all pending
+     * packable cells and then creating a new cell for the message. For now, we
+     * scream loudly to know if this happens organically through the maze. */
+    goto error;
+  }
+
+  SMARTLIST_FOREACH_BEGIN(codec->pending_packable_msg,
+                          const relay_msg_t *, pending_msg) {
+    log_info(LD_CIRC, "Packing cell command %u of length %zu with data cell",
+             pending_msg->command, get_relay_msg_encoded_len(pending_msg));
+    /* Encoded the message in the cell offsetted to the available bytes. */
+    len = encode_one_relay_msg_v1(pending_msg, cell->payload + offset,
+                                  available_len);
+    ADVANCE_CHECKED(len);
+  } SMARTLIST_FOREACH_END(pending_msg);
+
+  /* We have consumed all pending packable message(s), clear the list. */
+  SMARTLIST_FOREACH(codec->pending_packable_msg, relay_msg_t *, m,
+                    relay_msg_free(m));
+  smartlist_clear(codec->pending_packable_msg);
+
+  /* Finally, put in the actual message in the cell. We know there is enough
+   * room due to the initial total_len check. */
+  len = encode_one_relay_msg_v1(msg, cell->payload + offset, available_len);
+  ADVANCE_CHECKED(len);
+
+  /* Check if we at least have 1 byte available to add an end-of-message
+   * marker. If not, the protocol allows the data to be exactly up to the end
+   * meaning no need for a marker in that case. */
+  if (available_len > 0) {
+    set_uint8(cell->payload + offset, RELAY_MSG_END_MARKER_V1);
+    ADVANCE_CHECKED(sizeof(uint8_t));
+  }
+
+  /* Pad the cell if needed. This function takes the payload size thus why we
+   * remove the header size. */
+  relay_cell_pad_payload(cell, encoded_len);
+
+  /* Last step, put the cell in the ready queue, it is ready to be sent. */
+  smartlist_add(codec->encoder.ready_cells, cell);
+  return encoded_len;
+
+ error:
+  tor_free(cell);
+  return 0;
+}
+
 /*
  * Public API
  */
@@ -530,4 +753,39 @@ relay_msg_decode_cell(relay_msg_codec_t *codec, const cell_t *cell)
     /* Consider invalid of course. */
     return false;
   }
+}
+
+/** Add a new message into the codec which can yield one or more cells. They
+ * need to be taken after this if ready.
+ *
+ * Return true on success else false. */
+bool
+relay_msg_encode_msg(relay_msg_codec_t *codec, const relay_msg_t *msg)
+{
+  tor_assert(codec);
+  tor_assert(msg);
+
+  /* Extra safety code flow. */
+  tor_assert(msg->relay_cell_proto == codec->relay_cell_proto);
+
+  switch (codec->relay_cell_proto) {
+  case 0:
+    encode_relay_msg_v0(msg, codec);
+    break;
+  case 1:
+    if (!encode_relay_msg_v1(msg, codec)) {
+      goto error;
+    }
+    break;
+  default:
+    /* In theory, we can't negotiate a protocol version we don't know but,
+     * again, this is C and 20+ year old code base so be extra safe. */
+    tor_assert_nonfatal_unreached();
+    goto error;
+  }
+
+  return true;
+
+ error:
+  return false;
 }
