@@ -14,6 +14,7 @@
 
 #include "lib/cc/torint.h"
 #include "lib/log/log.h"
+#include "core/or/relay_msg_st.h"
 
 #include "app/config/config.h"
 
@@ -34,7 +35,7 @@ circuitbuild_warn_client_extend(void)
 
 #ifdef HAVE_MODULE_RELAY
 
-int circuit_extend(struct cell_t *cell, struct circuit_t *circ);
+int circuit_extend(const relay_msg_t *msg, struct circuit_t *circ);
 
 int onionskin_answer(struct or_circuit_t *circ,
                      const struct created_cell_t *created_cell,
@@ -44,9 +45,9 @@ int onionskin_answer(struct or_circuit_t *circ,
 #else /* !defined(HAVE_MODULE_RELAY) */
 
 static inline int
-circuit_extend(struct cell_t *cell, struct circuit_t *circ)
+circuit_extend(const relay_msg_t *msg, struct circuit_t *circ)
 {
-  (void)cell;
+  (void)msg;
   (void)circ;
   circuitbuild_warn_client_extend();
   return -1;

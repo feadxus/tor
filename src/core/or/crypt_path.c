@@ -170,6 +170,7 @@ cpath_free(crypt_path_t *victim)
   crypto_dh_free(victim->rend_dh_handshake_state);
   extend_info_free(victim->extend_info);
   congestion_control_free(victim->ccontrol);
+  relay_msg_codec_clear(&victim->relay_msg_codec);
 
   memwipe(victim, 0xBB, sizeof(crypt_path_t)); /* poison memory */
   tor_free(victim);

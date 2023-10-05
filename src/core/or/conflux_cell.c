@@ -227,16 +227,14 @@ conflux_cell_parse_link_v1(const trn_cell_conflux_link_t *trn_link)
 }
 
 conflux_cell_link_t *
-conflux_cell_parse_link(const cell_t *cell, const uint16_t cell_len)
+conflux_cell_parse_link(const relay_msg_t *msg)
 {
   conflux_cell_link_t *link = NULL;
   trn_cell_conflux_link_t *trn_cell = NULL;
 
-  tor_assert(cell);
+  tor_assert(msg);
 
-  if (trn_cell_conflux_link_parse(&trn_cell,
-                                  cell->payload + RELAY_HEADER_SIZE,
-                                  cell_len) < 0) {
+  if (trn_cell_conflux_link_parse(&trn_cell, msg->body, msg->length) < 0) {
     log_fn(LOG_PROTOCOL_WARN, LD_CIRC,
            "Unable to parse CONFLUX_LINK cell.");
     goto end;
@@ -259,10 +257,10 @@ conflux_cell_parse_link(const cell_t *cell, const uint16_t cell_len)
 }
 
 conflux_cell_link_t *
-conflux_cell_parse_linked(const cell_t *cell, const uint16_t cell_len)
+conflux_cell_parse_linked(const relay_msg_t *msg)
 {
   /* At the moment, same exact payload so avoid code duplication. */
-  return conflux_cell_parse_link(cell, cell_len);
+  return conflux_cell_parse_link(msg);
 }
 
 conflux_cell_link_t *
@@ -285,15 +283,15 @@ conflux_cell_new_link(const uint8_t *nonce, uint64_t last_seqno_sent,
  * Extracts the sequence number from a switch cell.
  */
 uint32_t
-conflux_cell_parse_switch(const cell_t *cell, uint16_t rh_len)
+conflux_cell_parse_switch(const relay_msg_t *msg)
 {
   uint32_t seq = 0;
   trn_cell_conflux_switch_t *switch_cell = NULL;
-  tor_assert(cell);
+
+  tor_assert(msg);
 
   if (trn_cell_conflux_switch_parse(&switch_cell,
-                                    cell->payload + RELAY_HEADER_SIZE,
-                                    rh_len) < 0) {
+                                    msg->body, msg->length) < 0) {
     log_warn(LD_BUG, "Failed to parse switch cell");
     // Zero counts as a failure to the validation, since legs should
     // not switch after 0 cells.

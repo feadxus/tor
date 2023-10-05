@@ -43,6 +43,9 @@ size_t relay_msg_get_next_max_len(const relay_msg_codec_t *codec,
                                   const uint8_t cmd);
 relay_msg_codec_t *relay_msg_get_codec(circuit_t *circ, crypt_path_t *cpath);
 
+/* Helpers. */
+void relay_msg_free_messages(smartlist_t *messages);
+
 #ifdef RELAY_MSG_PRIVATE
 
 #endif /* RELAY_MSG_PRIVATE */

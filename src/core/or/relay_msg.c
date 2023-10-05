@@ -930,3 +930,15 @@ relay_msg_queue_packable(relay_msg_codec_t *codec, relay_msg_t *msg)
   }
   smartlist_add(codec->pending_packable_msg, msg);
 }
+
+/** Helper function to free a list of relay_msg_t and the list it self. */
+void
+relay_msg_free_messages(smartlist_t *messages)
+{
+  if (!messages) {
+    return;
+  }
+
+  SMARTLIST_FOREACH(messages, relay_msg_t *, m, relay_msg_free(m));
+  smartlist_free(messages);
+}

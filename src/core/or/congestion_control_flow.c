@@ -232,10 +232,8 @@ circuit_send_stream_xon(edge_connection_t *stream)
  */
 bool
 circuit_process_stream_xoff(edge_connection_t *conn,
-                            const crypt_path_t *layer_hint,
-                            const cell_t *cell)
+                            const crypt_path_t *layer_hint)
 {
-  (void)cell;
   bool retval = true;
 
   if (BUG(!conn)) {
@@ -327,7 +325,7 @@ circuit_process_stream_xoff(edge_connection_t *conn,
 bool
 circuit_process_stream_xon(edge_connection_t *conn,
                            const crypt_path_t *layer_hint,
-                           const cell_t *cell)
+                           const relay_msg_t *msg)
 {
   xon_cell_t *xon;
   bool retval = true;
@@ -351,8 +349,7 @@ circuit_process_stream_xon(edge_connection_t *conn,
     return false;
   }
 
-  if (xon_cell_parse(&xon, cell->payload+RELAY_HEADER_SIZE,
-                     CELL_PAYLOAD_SIZE-RELAY_HEADER_SIZE) < 0) {
+  if (xon_cell_parse(&xon, msg->body, msg->length) < 0) {
     log_fn(LOG_PROTOCOL_WARN, LD_EDGE,
           "Received malformed XON cell.");
     return false;
