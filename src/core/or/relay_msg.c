@@ -11,6 +11,9 @@
 #include "app/config/config.h"
 
 #include "core/or/cell_st.h"
+#include "core/or/circuit_st.h"
+#include "core/or/circuitlist.h"
+#include "core/or/crypt_path_st.h"
 #include "core/or/relay.h"
 #include "core/or/relay_cell.h"
 #include "core/or/relay_msg.h"
@@ -698,6 +701,35 @@ relay_msg_clear(relay_msg_t *msg)
   memset(msg, 0, sizeof(*msg));
 }
 
+/** Allocate a new relay message and copy the content of the given message. */
+relay_msg_t *
+relay_msg_copy(const relay_msg_t *msg)
+{
+  relay_msg_t *new = tor_malloc_zero(sizeof(*msg));
+
+  memcpy(new, msg, sizeof(*msg));
+  new->body = tor_malloc_zero(msg->length);
+  memcpy(new->body, msg->body, new->length);
+
+  return new;
+}
+
+/** Set a relay message data into the given message. Useful for stack allocated
+ * messages. */
+void
+relay_msg_set(const uint8_t relay_cell_proto, const uint8_t cmd,
+              const streamid_t stream_id, const uint8_t *payload,
+              const uint16_t payload_len, relay_msg_t *msg)
+{
+  msg->relay_cell_proto = relay_cell_proto;
+  msg->command = cmd;
+  msg->stream_id = stream_id;
+
+  msg->length = payload_len;
+  msg->body = tor_malloc_zero(msg->length);
+  memcpy(msg->body, payload, msg->length);
+}
+
 /** Initialize a given codec pointer for the relay cell protocol version. */
 void
 relay_msg_codec_init(relay_msg_codec_t *codec, uint8_t relay_cell_proto)
@@ -814,4 +846,55 @@ relay_msg_take_ready_msgs(relay_msg_codec_t *codec)
   smartlist_t *ready = codec->decoder.ready;
   codec->decoder.ready = smartlist_new();
   return ready;
+}
+
+/** Return the maximum length that the next relay message size can be. This
+ * function, contrary to the max body function, takes into account the packable
+ * message queue size.
+ *
+ * This function is guaranteed to return at least enough bytes to support the
+ * minimum size required for randomness. */
+size_t
+relay_msg_get_next_max_len(const relay_msg_codec_t *codec, const uint8_t cmd)
+{
+  tor_assert(codec);
+
+/** This is the minimum length to guarantee for randomness if it is forced by
+ * the caller. It is the padding gap, 16 bytes for proper randomness. See
+ * connection_edge_get_inbuf_bytes_to_package() for how this is used. */
+#define RELAY_CELL_MIN_BODY_LEN (RELAY_CELL_PADDING_GAP + 16)
+
+  ssize_t len = get_relay_msg_max_body(cmd, codec->relay_cell_proto) -
+                get_packable_msg_encoded_len(codec);
+  if (len <= RELAY_CELL_MIN_BODY_LEN) {
+    /* Huh! What is this? The logic here is that if we have too many packable
+     * cells for at least 1 byte of data, we then return the full body which
+     * means that all packable cells will be packed together in one cell
+     * immediately followed by another cell for the maximum possible.
+     *
+     * In other words, we either pack all of them with at least 1 byte of relay
+     * data or we create 2 cells filled as much as possible. */
+    return get_relay_msg_max_body(cmd, codec->relay_cell_proto);
+  }
+  return len;
+}
+
+/** Return the codec to use. Codec on the circuit only applies to Exit which
+ * won't have a cpath. And vice versa, codec on the cpath only applies to
+ * clients which means not on the circuit and the circuit has to be an origin
+ * circuit for that matter.
+ *
+ * NULL can be passed but not for both. */
+relay_msg_codec_t *
+relay_msg_get_codec(circuit_t *circ, crypt_path_t *cpath)
+{
+  if (circ && CIRCUIT_IS_ORCIRC(circ)) {
+    return &circ->relay_msg_codec;
+  } else if (cpath) {
+    return &cpath->relay_msg_codec;
+  } else {
+    /* We end up here when both params are NULL, which is not allowed, or when
+     * only an origin circuit is given which again not allowed. */
+    tor_assert_unreached();
+  }
 }
