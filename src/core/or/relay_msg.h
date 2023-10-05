@@ -25,6 +25,9 @@ void relay_msg_clear(relay_msg_t *msg);
 void relay_msg_codec_init(relay_msg_codec_t *codec, uint8_t relay_cell_proto);
 void relay_msg_codec_clear(relay_msg_codec_t *codec);
 
+/* Decoder/Encoder. */
+bool relay_msg_decode_cell(relay_msg_codec_t *codec, const cell_t *cell);
+
 #ifdef RELAY_MSG_PRIVATE
 
 #endif /* RELAY_MSG_PRIVATE */
