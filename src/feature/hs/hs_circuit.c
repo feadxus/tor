@@ -15,6 +15,7 @@
 #include "core/or/circuituse.h"
 #include "core/or/policies.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/crypt_path.h"
 #include "core/or/extendinfo.h"
 #include "core/or/congestion_control_common.h"
@@ -145,6 +146,10 @@ finalize_rend_circuit(origin_circuit_t *circ, crypt_path_t *hop,
     hop->ccontrol = TO_CIRCUIT(circ)->ccontrol;
     TO_CIRCUIT(circ)->ccontrol = NULL;
   }
+
+  /* At the moment, onion service don't support packed and fragmented cells as
+   * in RelayCell=1 so we pin version 0 decoder. */
+  relay_msg_codec_init(&hop->relay_msg_codec, 0);
 
   /* Append the hop to the cpath of this circuit */
   cpath_extend_linked_list(&circ->cpath, hop);

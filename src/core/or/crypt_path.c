@@ -28,6 +28,7 @@
 #include "core/or/circuitlist.h"
 #include "core/or/extendinfo.h"
 #include "core/or/congestion_control_common.h"
+#include "core/or/relay_msg.h"
 
 #include "lib/crypt_ops/crypto_dh.h"
 #include "lib/crypt_ops/crypto_util.h"
@@ -70,6 +71,8 @@ cpath_append_hop(crypt_path_t **head_ptr, extend_info_t *choice)
 
   hop->package_window = circuit_initial_package_window();
   hop->deliver_window = CIRCWINDOW_START;
+  /* Default to version 0 until negotiation. */
+  relay_msg_codec_init(&hop->relay_msg_codec, 0);
 
   return 0;
 }

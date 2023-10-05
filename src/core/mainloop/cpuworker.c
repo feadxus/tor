@@ -446,6 +446,10 @@ cpuworker_onion_handshake_replyfn(void *work_)
     }
   }
 
+  /* Setup our codec with the negotiated verseion. */
+  relay_msg_codec_init(&TO_CIRCUIT(circ)->relay_msg_codec,
+                       rpl.circ_params.relay_cell_proto_version);
+
   if (onionskin_answer(circ,
                        &rpl.created_cell,
                        (const char*)rpl.keys, sizeof(rpl.keys),
@@ -455,7 +459,9 @@ cpuworker_onion_handshake_replyfn(void *work_)
     goto done_processing;
   }
 
-  log_debug(LD_OR,"onionskin_answer succeeded. Yay.");
+  log_info(LD_OR, "Circuit onionskin handshake succeeded. Yay. "
+                  "Relay cell protocol version: %u",
+           rpl.circ_params.relay_cell_proto_version);
 
  done_processing:
   memwipe(&rpl, 0, sizeof(rpl));

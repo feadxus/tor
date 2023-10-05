@@ -107,6 +107,7 @@
 #include "core/or/congestion_control_common.h"
 #include "core/or/congestion_control_st.h"
 #include "lib/math/stats.h"
+#include "core/or/relay_msg.h"
 
 #include "core/or/ocirc_event.h"
 
@@ -1031,6 +1032,8 @@ init_circuit_base(circuit_t *circ)
   circ->deliver_window = CIRCWINDOW_START;
   circuit_reset_sendme_randomness(circ);
   cell_queue_init(&circ->n_chan_cells);
+  /* Default to version 0 until negotiation. */
+  relay_msg_codec_init(&circ->relay_msg_codec, 0);
 
   smartlist_add(circuit_get_global_list(), circ);
   circ->global_circuitlist_idx = smartlist_len(circuit_get_global_list()) - 1;
@@ -1267,6 +1270,9 @@ circuit_free_(circuit_t *circ)
 
   /* Remove from map. */
   circuit_set_n_circid_chan(circ, 0, NULL);
+
+  /* Free our cell decoder. */
+  relay_msg_codec_clear(&circ->relay_msg_codec);
 
   /* Clear cell queue _after_ removing it from the map.  Otherwise our
    * "active" checks will be violated. */
