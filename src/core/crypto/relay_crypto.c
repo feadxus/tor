@@ -9,6 +9,7 @@
  * @brief Header for relay_crypto.c
  **/
 
+#define CRYPT_PATH_PRIVATE
 #include "core/or/or.h"
 #include "core/or/circuitlist.h"
 #include "core/or/crypt_path.h"
@@ -19,6 +20,7 @@
 #include "core/or/relay.h"
 #include "core/crypto/relay_crypto.h"
 #include "core/or/sendme.h"
+#include "core/or/relay_cell.h"
 
 #include "core/or/cell_st.h"
 #include "core/or/or_circuit_st.h"
@@ -27,19 +29,22 @@
 /** Update digest from the payload of cell. Assign integrity part to
  * cell.
  */
-void
-relay_set_digest(crypto_digest_t *digest, cell_t *cell)
+static void
+set_cell_digest(crypto_digest_t *digest, cell_t *cell)
 {
-  char integrity[4];
-  relay_header_t rh;
+  /* This function is in the fast path and called heavily on relays. We ought
+   * to NOT do any memory allocation for performance reasons. This is why it is
+   * set to the current largest digest possible. */
+  uint8_t cell_digest[14];
+  uint8_t cell_digest_len = relay_cell_get_digest_len(cell);
+  /* Safety net on code flow issue. */
+  tor_assert(cell_digest_len <= sizeof(cell_digest));
 
+  /* Compute digest and put it in our buffer. */
   crypto_digest_add_bytes(digest, (char*)cell->payload, CELL_PAYLOAD_SIZE);
-  crypto_digest_get_digest(digest, integrity, 4);
-//  log_fn(LOG_DEBUG,"Putting digest of %u %u %u %u into relay cell.",
-//    integrity[0], integrity[1], integrity[2], integrity[3]);
-  relay_header_unpack(&rh, cell->payload);
-  memcpy(rh.integrity, integrity, 4);
-  relay_header_pack(cell->payload, &rh);
+  crypto_digest_get_digest(digest, (char *) cell_digest, cell_digest_len);
+
+  relay_cell_set_digest(cell, cell_digest);
 }
 
 /** Does the digest for this circuit indicate that this cell is for us?
@@ -51,34 +56,44 @@ relay_set_digest(crypto_digest_t *digest, cell_t *cell)
 static int
 relay_digest_matches(crypto_digest_t *digest, cell_t *cell)
 {
-  uint32_t received_integrity, calculated_integrity;
-  relay_header_t rh;
+  /* This function is in the fast path and called heavily on relays. We ought
+   * to NOT do any memory allocation for performance reasons. That is why these
+   * two buffers are set to the current maximum size a cell digest can be.
+   * Comparaison is done over the actual length which is less or equal. */
+  uint8_t received_digest[14], calculated_digest[14];
   crypto_digest_checkpoint_t backup_digest;
 
+  /* Create a backup in order to be able to restore if digest don't match. */
   crypto_digest_checkpoint(&backup_digest, digest);
 
-  relay_header_unpack(&rh, cell->payload);
-  memcpy(&received_integrity, rh.integrity, 4);
-  memset(rh.integrity, 0, 4);
-  relay_header_pack(cell->payload, &rh);
+  /* Get the cell digest and its length based on the relay cell proto.
+   * IMPORTANT: The getter returns a pointer from inside the given cell. */
+  uint8_t *cell_digest = relay_cell_get_digest(cell);
+  size_t cell_digest_len = relay_cell_get_digest_len(cell);
 
-//  log_fn(LOG_DEBUG,"Reading digest of %u %u %u %u from relay cell.",
-//    received_integrity[0], received_integrity[1],
-//    received_integrity[2], received_integrity[3]);
+  /* Safety net on code flow issue. */
+  tor_assert(cell_digest_len <= sizeof(received_digest));
 
+  /* Keep the cell digest so we can compare it with the calculated one or
+   * restore it back in the cell. */
+  memcpy(&received_digest, cell_digest, cell_digest_len);
+  /* Nullify the cell digest in order to calculate the cell digest without the
+   * digest itself else we have this catch22 situation. Crypto heh... */
+  memset(cell_digest, 0, cell_digest_len);
+
+  /* Calcualte the rolling digest. Yes, char cast... */
   crypto_digest_add_bytes(digest, (char*) cell->payload, CELL_PAYLOAD_SIZE);
-  crypto_digest_get_digest(digest, (char*) &calculated_integrity, 4);
+  crypto_digest_get_digest(digest, (char*) calculated_digest, cell_digest_len);
 
   int rv = 1;
 
-  if (calculated_integrity != received_integrity) {
-//    log_fn(LOG_INFO,"Recognized=0 but bad digest. Not recognizing.");
-// (%d vs %d).", received_integrity, calculated_integrity);
-    /* restore digest to its old form */
+  /* If NOT equal, restore digest from the backup earlier. It likely means the
+   * cell is still encrypted. */
+  if (!tor_memeq(calculated_digest, received_digest, cell_digest_len)) {
+    /* Restore digest to its old form */
     crypto_digest_restore(digest, &backup_digest);
-    /* restore the relay header */
-    memcpy(rh.integrity, &received_integrity, 4);
-    relay_header_pack(cell->payload, &rh);
+    /* Restore the cell digest. */
+    memcpy(cell_digest, received_digest, cell_digest_len);
     rv = 0;
   }
 
@@ -146,8 +161,6 @@ relay_decrypt_cell(circuit_t *circ, cell_t *cell,
                    cell_direction_t cell_direction,
                    crypt_path_t **layer_hint, char *recognized)
 {
-  relay_header_t rh;
-
   tor_assert(circ);
   tor_assert(cell);
   tor_assert(recognized);
@@ -170,8 +183,8 @@ relay_decrypt_cell(circuit_t *circ, cell_t *cell,
         /* decrypt one layer */
         cpath_crypt_cell(thishop, cell->payload, true);
 
-        relay_header_unpack(&rh, cell->payload);
-        if (rh.recognized == 0) {
+        cell->relay_cell_proto = thishop->relay_msg_codec.relay_cell_proto;
+        if (relay_cell_is_recognized(cell)) {
           /* it's possibly recognized. have to check digest to be sure. */
           if (relay_digest_matches(cpath_get_incoming_digest(thishop), cell)) {
             *recognized = 1;
@@ -196,8 +209,8 @@ relay_decrypt_cell(circuit_t *circ, cell_t *cell,
 
     relay_crypt_one_payload(crypto->f_crypto, cell->payload);
 
-    relay_header_unpack(&rh, cell->payload);
-    if (rh.recognized == 0) {
+    cell->relay_cell_proto = circ->relay_msg_codec.relay_cell_proto;
+    if (relay_cell_is_recognized(cell)) {
       /* it's possibly recognized. have to check digest to be sure. */
       if (relay_digest_matches(crypto->f_digest, cell)) {
         *recognized = 1;
@@ -221,7 +234,7 @@ relay_encrypt_cell_outbound(cell_t *cell,
                             crypt_path_t *layer_hint)
 {
   crypt_path_t *thishop; /* counter for repeated crypts */
-  cpath_set_cell_forward_digest(layer_hint, cell);
+  set_cell_digest(layer_hint->pvt_crypto.f_digest, cell);
 
   /* Record cell digest as the SENDME digest if need be. */
   sendme_record_sending_cell_digest(TO_CIRCUIT(circ), layer_hint);
@@ -245,10 +258,9 @@ relay_encrypt_cell_outbound(cell_t *cell,
  * must be set to zero.
  */
 void
-relay_encrypt_cell_inbound(cell_t *cell,
-                           or_circuit_t *or_circ)
+relay_encrypt_cell_inbound(cell_t *cell, or_circuit_t *or_circ)
 {
-  relay_set_digest(or_circ->crypto.b_digest, cell);
+  set_cell_digest(or_circ->crypto.b_digest, cell);
 
   /* Record cell digest as the SENDME digest if need be. */
   sendme_record_sending_cell_digest(TO_CIRCUIT(or_circ), NULL);

@@ -196,14 +196,6 @@ cpath_get_incoming_digest(const crypt_path_t *cpath)
   return cpath->pvt_crypto.b_digest;
 }
 
-/** Set the right integrity digest on the outgoing <b>cell</b> based on the
- *  cell payload and update the forward digest of <b>cpath</b>. */
-void
-cpath_set_cell_forward_digest(crypt_path_t *cpath, cell_t *cell)
-{
-  relay_set_digest(cpath->pvt_crypto.f_digest, cell);
-}
-
 /************ cpath sendme API ***************************/
 
 /** Return the sendme_digest of this <b>cpath</b>. */
