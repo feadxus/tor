@@ -40,6 +40,7 @@
 #include "core/or/connection_edge.h"
 #include "core/or/edge_connection_st.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/versions.h"
 #include "feature/dirauth/dirvote.h"
 #include "feature/dirauth/shared_random_state.h"
@@ -258,6 +259,7 @@ helper_create_origin_circuit(int purpose, int flags)
   crypto_rand(circ->cpath->prev->rend_circ_nonce, DIGEST_LEN);
   /* Create a default HS identifier. */
   circ->hs_ident = tor_malloc_zero(sizeof(hs_ident_circuit_t));
+  relay_msg_codec_init(&circ->cpath->relay_msg_codec, 0);
 
   return circ;
 }

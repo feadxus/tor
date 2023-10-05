@@ -7,6 +7,7 @@
 #define BUFFERS_PRIVATE
 
 #include "core/or/or.h"
+#include "core/or/relay_msg_st.h"
 #include "tinytest.h"
 
 const char *get_yesterday_date_str(void);
@@ -46,6 +47,8 @@ origin_circuit_t *new_test_origin_circuit(bool has_opened,
                                           struct timeval circ_start_time,
                                           int path_len,
                                           extend_info_t **ei_list);
+void helper_relay_msg_garbage(relay_msg_t *msg, uint8_t garbage);
+relay_msg_t *helper_relay_msg_from_cell(cell_t *cell);
 
 #endif /* !defined(TOR_TEST_HELPERS_H) */
 

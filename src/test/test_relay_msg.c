@@ -131,9 +131,9 @@ test_decoder_invalid_v1(void *arg)
 
   setup_full_capture_of_logs(LOG_PROTOCOL_WARN);
 
-  relay_msg_decoder_t decoder;
-  relay_msg_decoder_init(&decoder, 1);
-  tt_int_op(decoder.relay_cell_proto, OP_EQ, 1);
+  relay_msg_codec_t codec;
+  relay_msg_codec_init(&codec, 1);
+  tt_int_op(codec.relay_cell_proto, OP_EQ, 1);
 
   const char *body = "\x01\x02\x03\x04\x05\x06\x07\x08";
   MAKE_RELAY_CELL_V1((&cell), RELAY_COMMAND_DATA, 42, body,
@@ -142,7 +142,7 @@ test_decoder_invalid_v1(void *arg)
   /* End of message market at the start. */
   set_uint8(cell.payload + relay_cell_get_header_size(1) , 0);
 
-  relay_msg_decoder_add_cell(&cell, &decoder);
+  relay_msg_decode_cell(&codec, &cell);
   expect_log_msg_containing("End-of-message marker at the start. "
                             "Invalid v1 cell.");
 
@@ -150,7 +150,7 @@ test_decoder_invalid_v1(void *arg)
   MAKE_RELAY_CELL_V1((&cell), 246, 42, body, strlen(body));
   set_uint16(cell.payload + relay_cell_get_header_size(1) +
              sizeof(uint8_t), htons(600));
-  relay_msg_decoder_add_cell(&cell, &decoder);
+  relay_msg_decode_cell(&codec, &cell);
   expect_log_msg_containing("Unknown relay command 246. Invalid v1 cell.");
 
   /* Too big length. */
@@ -158,13 +158,13 @@ test_decoder_invalid_v1(void *arg)
                      strlen(body));
   set_uint16(cell.payload + relay_cell_get_header_size(1) +
              sizeof(uint8_t), htons(600));
-  relay_msg_decoder_add_cell(&cell, &decoder);
+  relay_msg_decode_cell(&codec, &cell);
   expect_log_msg_containing("Relay message body length is too big: "
                             "600 vs 488. Invalid v1 cell.");
 
  done:
   relay_msg_free(msg);
-  relay_msg_decoder_clear(&decoder);
+  relay_msg_codec_clear(&codec);
   teardown_capture_of_logs();
 }
 
@@ -188,14 +188,14 @@ test_decoder_valid_v0(void *arg)
   MAKE_RELAY_CELL_V0((&cell_custom), RELAY_COMMAND_DATA, 42, body,
                      strlen(body));
 
-  relay_msg_decoder_add_cell(&cell_custom, decoder);
+  relay_msg_decode_cell(&codec, &cell_custom);
   /* Shouldn't be pending, should be ready. */
   tt_assert(!decoder->pending);
   tt_int_op(decoder->pending_len, OP_EQ, 0);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 1);
 
   /* Take the message as in its ownership. */
-  messages = relay_msg_decoder_take(decoder);
+  messages = relay_msg_take_ready_msgs(&codec);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 0); // Empty ready list.
   tt_assert(messages);
   tt_int_op(smartlist_len(messages), OP_EQ, 1);
@@ -213,7 +213,7 @@ test_decoder_valid_v0(void *arg)
    * the one we built from scratch above.
    */
 
-  bool ret = relay_msg_encoder_add_msg(&codec, msg_custom);
+  bool ret = relay_msg_encode_msg(&codec, msg_custom);
   tt_assert(ret);
   tt_int_op(smartlist_len(encoder->ready_cells), OP_EQ, 1);
   cell_data = smartlist_get(encoder->ready_cells, 0);
@@ -222,13 +222,13 @@ test_decoder_valid_v0(void *arg)
 
   /* Pass this cell back into our decoder and make sure the resulting message
    * is matching the first message we got from our custom cell. */
-  relay_msg_decoder_add_cell(cell_data, decoder);
+  relay_msg_decode_cell(&codec, cell_data);
   tt_assert(!decoder->pending);
   tt_int_op(decoder->pending_len, OP_EQ, 0);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 1);
 
   smartlist_free(messages);
-  messages = relay_msg_decoder_take(decoder);
+  messages = relay_msg_take_ready_msgs(&codec);
   tt_assert(messages);
   msg_data = smartlist_pop_last(messages);
   tt_assert(msg_data);
@@ -266,14 +266,14 @@ test_decoder_valid_v1(void *arg)
   MAKE_RELAY_CELL_V1((&cell_custom), RELAY_COMMAND_DATA, 42, body,
                      strlen(body));
 
-  relay_msg_decoder_add_cell(&cell_custom, decoder);
+  relay_msg_decode_cell(&codec, &cell_custom);
   /* Shouldn't be pending, should be ready. */
   tt_assert(!decoder->pending);
   tt_int_op(decoder->pending_len, OP_EQ, 0);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 1);
 
   /* Take the message as in its ownership. */
-  messages = relay_msg_decoder_take(decoder);
+  messages = relay_msg_take_ready_msgs(&codec);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 0); // Empty ready list.
   tt_assert(messages);
   tt_int_op(smartlist_len(messages), OP_EQ, 1);
@@ -291,7 +291,7 @@ test_decoder_valid_v1(void *arg)
    * the one we built from scratch above.
    */
 
-  bool ret = relay_msg_encoder_add_msg(&codec, msg_custom);
+  bool ret = relay_msg_encode_msg(&codec, msg_custom);
   tt_assert(ret);
   tt_int_op(smartlist_len(encoder->ready_cells), OP_EQ, 1);
   cell_data = smartlist_get(encoder->ready_cells, 0);
@@ -302,13 +302,13 @@ test_decoder_valid_v1(void *arg)
 
   /* Pass this cell back into our decoder and make sure the resulting message
    * is matching the first message we got from our custom cell. */
-  relay_msg_decoder_add_cell(cell_data, decoder);
+  relay_msg_decode_cell(&codec, cell_data);
   tt_assert(!decoder->pending);
   tt_int_op(decoder->pending_len, OP_EQ, 0);
   tt_int_op(smartlist_len(decoder->ready), OP_EQ, 1);
 
   smartlist_free(messages);
-  messages = relay_msg_decoder_take(decoder);
+  messages = relay_msg_take_ready_msgs(&codec);
   tt_assert(messages);
   msg_data = smartlist_pop_last(messages);
   tt_assert(msg_data);
@@ -354,7 +354,7 @@ test_encoder_valid_v0(void *arg)
     "\x41\x62\x43\x64"  // payload
     "\x00\x00\x00\x00"; // zero pading.
 
-  bool ret = relay_msg_encoder_add_msg(&codec, &msg);
+  bool ret = relay_msg_encode_msg(&codec, &msg);
   tt_assert(ret);
 
   tt_int_op(smartlist_len(codec.encoder.ready_cells), OP_EQ, 1);
@@ -397,7 +397,7 @@ test_encoder_valid_v1(void *arg)
     "\x00"              // End of Message marker.
     "\x00\x00\x00\x00"; // zero pading.
 
-  bool ret = relay_msg_encoder_add_msg(&codec, &msg);
+  bool ret = relay_msg_encode_msg(&codec, &msg);
   tt_assert(ret);
 
   tt_int_op(smartlist_len(codec.encoder.ready_cells), OP_EQ, 1);
@@ -463,7 +463,7 @@ test_packing_valid_v1(void *arg)
     "\x00"              // End of Message marker.
     "\x00\x00\x00\x00"; // zero pading.
 
-  bool ret = relay_msg_encoder_add_msg(&codec, &msg);
+  bool ret = relay_msg_encode_msg(&codec, &msg);
   tt_assert(ret);
 
   tt_int_op(smartlist_len(codec.encoder.ready_cells), OP_EQ, 1);
@@ -516,7 +516,7 @@ test_packing_invalid_v1(void *arg)
                 payload, sizeof(payload), &legit_msg);
 
   tor_capture_bugs_(1);
-  bool ret = relay_msg_encoder_add_msg(&codec, &legit_msg);
+  bool ret = relay_msg_encode_msg(&codec, &legit_msg);
   tt_assert(!ret);
   tt_int_op(smartlist_len(tor_get_captured_bug_log_()), OP_EQ, 1);
   tt_str_op(smartlist_get(tor_get_captured_bug_log_(), 0), OP_EQ,

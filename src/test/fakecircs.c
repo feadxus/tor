@@ -23,6 +23,7 @@
 #include "core/or/crypt_path.h"
 #include "core/or/relay.h"
 #include "core/or/relay_crypto_st.h"
+#include "core/or/relay_msg.h"
 
 #include "test/fakecircs.h"
 
@@ -54,6 +55,7 @@ new_fake_orcirc(channel_t *nchan, channel_t *pchan)
   circ->package_window = CIRCWINDOW_START_MAX;
   circ->deliver_window = CIRCWINDOW_START_MAX;
   circ->n_chan_create_cell = NULL;
+  relay_msg_codec_init(&circ->relay_msg_codec, 0);
 
   circuit_set_p_circid_chan(orcirc, get_unique_circ_id_by_chan(pchan), pchan);
   cell_queue_init(&(orcirc->p_chan_cells));
@@ -78,6 +80,8 @@ free_fake_orcirc(or_circuit_t *orcirc)
   }
 
   circuit_t *circ = TO_CIRCUIT(orcirc);
+
+  relay_msg_codec_clear(&circ->relay_msg_codec);
 
   relay_crypto_clear(&orcirc->crypto);
 

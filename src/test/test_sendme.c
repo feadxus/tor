@@ -15,6 +15,7 @@
 #include "core/or/circuitlist.h"
 #include "core/or/relay.h"
 #include "core/or/relay_cell.h"
+#include "core/or/relay_msg.h"
 #include "core/or/sendme.h"
 
 #include "feature/nodelist/networkstatus.h"
@@ -280,6 +281,8 @@ test_package_payload_len(void *arg)
   /* this is not a real circuit: it only has the fields needed for this
    * test. */
   circuit_t *c = tor_malloc_zero(sizeof(circuit_t));
+  c->magic = OR_CIRCUIT_MAGIC;
+  relay_msg_codec_init(&c->relay_msg_codec, 0);
 
   /* check initial conditions. */
   circuit_reset_sendme_randomness(c);
@@ -290,15 +293,16 @@ test_package_payload_len(void *arg)
   /* We have a bunch of cells before we need to send randomness, so the first
    * few can be packaged full. */
   int initial = c->send_randomness_after_n_cells;
-  size_t n = connection_edge_get_inbuf_bytes_to_package(10000, 0, c);
+  size_t n = connection_edge_get_inbuf_bytes_to_package(10000, 0, c, NULL);
   tt_uint_op(RELAY_PAYLOAD_SIZE, OP_EQ, n);
-  n = connection_edge_get_inbuf_bytes_to_package(95000, 1, c);
+  n = connection_edge_get_inbuf_bytes_to_package(95000, 1, c, NULL);
   tt_uint_op(RELAY_PAYLOAD_SIZE, OP_EQ, n);
   tt_int_op(c->send_randomness_after_n_cells, OP_EQ, initial - 2);
 
   /* If package_partial isn't set, we won't package a partially full cell at
    * all. */
-  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-1, 0, c);
+  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-1, 0, c,
+                                                 NULL);
   tt_int_op(n, OP_EQ, 0);
   /* no change in our state, since nothing was sent. */
   tt_assert(! c->have_sent_sufficiently_random_cell);
@@ -307,13 +311,15 @@ test_package_payload_len(void *arg)
   /* If package_partial is set and the partial cell is not going to have
    * _enough_ randomness, we package it, but we don't consider ourselves to
    * have sent a sufficiently random cell. */
-  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-1, 1, c);
+  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-1, 1, c,
+                                                 NULL);
   tt_int_op(n, OP_EQ, RELAY_PAYLOAD_SIZE-1);
   tt_assert(! c->have_sent_sufficiently_random_cell);
   tt_int_op(c->send_randomness_after_n_cells, OP_EQ, initial - 3);
 
   /* Make sure we set have_set_sufficiently_random_cell as appropriate. */
-  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-64, 1, c);
+  n = connection_edge_get_inbuf_bytes_to_package(RELAY_PAYLOAD_SIZE-64, 1, c,
+                                                 NULL);
   tt_int_op(n, OP_EQ, RELAY_PAYLOAD_SIZE-64);
   tt_assert(c->have_sent_sufficiently_random_cell);
   tt_int_op(c->send_randomness_after_n_cells, OP_EQ, initial - 4);
@@ -322,7 +328,7 @@ test_package_payload_len(void *arg)
    * sent a sufficiently random cell, we will not force this one to have a gap.
    */
   c->send_randomness_after_n_cells = 0;
-  n = connection_edge_get_inbuf_bytes_to_package(10000, 1, c);
+  n = connection_edge_get_inbuf_bytes_to_package(10000, 1, c, NULL);
   tt_int_op(n, OP_EQ, RELAY_PAYLOAD_SIZE);
   /* Now these will be reset. */
   tt_assert(! c->have_sent_sufficiently_random_cell);
@@ -331,7 +337,7 @@ test_package_payload_len(void *arg)
 
   /* What would happen if we hadn't sent a sufficiently random cell? */
   c->send_randomness_after_n_cells = 0;
-  n = connection_edge_get_inbuf_bytes_to_package(10000, 1, c);
+  n = connection_edge_get_inbuf_bytes_to_package(10000, 1, c, NULL);
   const size_t reduced_payload_size = RELAY_PAYLOAD_SIZE - 4 - 16;
   tt_int_op(n, OP_EQ, reduced_payload_size);
   /* Now these will be reset. */
@@ -343,10 +349,12 @@ test_package_payload_len(void *arg)
    * package_partial==0 should mean we accept that many bytes.
    */
   c->send_randomness_after_n_cells = 0;
-  n = connection_edge_get_inbuf_bytes_to_package(reduced_payload_size, 0, c);
+  n = connection_edge_get_inbuf_bytes_to_package(reduced_payload_size, 0, c,
+                                                 NULL);
   tt_int_op(n, OP_EQ, reduced_payload_size);
 
  done:
+  relay_msg_codec_clear(&c->relay_msg_codec);
   tor_free(c);
 }
 
