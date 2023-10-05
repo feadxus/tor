@@ -45,6 +45,7 @@
  * types of relay cells, launching requests or transmitting data as needed.
  **/
 
+#include "core/or/relay_cell.h"
 #define RELAY_PRIVATE
 #include "core/or/or.h"
 #include "feature/client/addressmap.h"
@@ -561,60 +562,6 @@ relay_command_to_string(uint8_t command)
  * payload. */
 #define CELL_PADDING_GAP 4
 
-/** Return the offset where the padding should start. The <b>data_len</b> is
- * the relay payload length expected to be put in the cell. It can not be
- * bigger than RELAY_PAYLOAD_SIZE else this function assert().
- *
- * Value will always be smaller than CELL_PAYLOAD_SIZE because this offset is
- * for the entire cell length not just the data payload length. Zero is
- * returned if there is no room for padding.
- *
- * This function always skips the first 4 bytes after the payload because
- * having some unused zero bytes has saved us a lot of times in the past. */
-
-STATIC size_t
-get_pad_cell_offset(size_t data_len)
-{
-  /* This is never supposed to happen but in case it does, stop right away
-   * because if tor is tricked somehow into not adding random bytes to the
-   * payload with this function returning 0 for a bad data_len, the entire
-   * authenticated SENDME design can be bypassed leading to bad denial of
-   * service attacks. */
-  tor_assert(data_len <= RELAY_PAYLOAD_SIZE);
-
-  /* If the offset is larger than the cell payload size, we return an offset
-   * of zero indicating that no padding needs to be added. */
-  size_t offset = RELAY_HEADER_SIZE + data_len + CELL_PADDING_GAP;
-  if (offset >= CELL_PAYLOAD_SIZE) {
-    return 0;
-  }
-  return offset;
-}
-
-/* Add random bytes to the unused portion of the payload, to foil attacks
- * where the other side can predict all of the bytes in the payload and thus
- * compute the authenticated SENDME cells without seeing the traffic. See
- * proposal 289. */
-static void
-pad_cell_payload(uint8_t *cell_payload, size_t data_len)
-{
-  size_t pad_offset, pad_len;
-
-  tor_assert(cell_payload);
-
-  pad_offset = get_pad_cell_offset(data_len);
-  if (pad_offset == 0) {
-    /* We can't add padding so we are done. */
-    return;
-  }
-
-  /* Remember here that the cell_payload is the length of the header and
-   * payload size so we offset it using the full length of the cell. */
-  pad_len = CELL_PAYLOAD_SIZE - pad_offset;
-  crypto_fast_rng_getbytes(get_thread_fast_rng(),
-                           cell_payload + pad_offset, pad_len);
-}
-
 /** Make a relay cell out of <b>relay_command</b> and <b>payload</b>, and send
  * it onto the open circuit <b>circ</b>. <b>stream_id</b> is the ID on
  * <b>circ</b> for the stream that's sending the relay cell, or 0 if it's a
@@ -680,7 +627,7 @@ relay_send_command_from_edge_,(streamid_t stream_id, circuit_t *orig_circ,
     memcpy(cell.payload+RELAY_HEADER_SIZE, payload, payload_len);
 
   /* Add random padding to the cell if we can. */
-  pad_cell_payload(cell.payload, payload_len);
+  relay_cell_pad_payload(&cell, payload_len);
 
   log_debug(LD_OR,"delivering %d cell %s.", relay_command,
             cell_direction == CELL_DIRECTION_OUT ? "forward" : "backward");

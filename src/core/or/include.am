@@ -30,6 +30,7 @@ LIBTOR_APP_A_SOURCES += 				\
 	src/core/or/protover.c			\
 	src/core/or/reasons.c			\
 	src/core/or/relay.c			\
+	src/core/or/relay_cell.c			\
 	src/core/or/relay_msg.c			\
 	src/core/or/scheduler.c			\
 	src/core/or/scheduler_kist.c		\
@@ -105,6 +106,7 @@ noinst_HEADERS +=					\
 	src/core/or/protover.h				\
 	src/core/or/reasons.h				\
 	src/core/or/relay.h				\
+	src/core/or/relay_cell.h			\
 	src/core/or/relay_msg.h			\
 	src/core/or/relay_msg_st.h			\
 	src/core/or/relay_crypto_st.h			\

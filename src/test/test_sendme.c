@@ -7,12 +7,14 @@
 #define NETWORKSTATUS_PRIVATE
 #define SENDME_PRIVATE
 #define RELAY_PRIVATE
+#define RELAY_CELL_PRIVATE
 
 #include "core/or/circuit_st.h"
 #include "core/or/or_circuit_st.h"
 #include "core/or/origin_circuit_st.h"
 #include "core/or/circuitlist.h"
 #include "core/or/relay.h"
+#include "core/or/relay_cell.h"
 #include "core/or/sendme.h"
 
 #include "feature/nodelist/networkstatus.h"
@@ -210,32 +212,32 @@ test_cell_payload_pad(void *arg)
 
   /* Offset should be 0, not enough room for padding. */
   payload_len = RELAY_PAYLOAD_SIZE;
-  pad_offset = get_pad_cell_offset(payload_len);
+  pad_offset = get_pad_cell_offset(payload_len, 0);
   tt_int_op(pad_offset, OP_EQ, 0);
   tt_int_op(CELL_PAYLOAD_SIZE - pad_offset, OP_LE, CELL_PAYLOAD_SIZE);
 
   /* Still no room because we keep 4 extra bytes. */
-  pad_offset = get_pad_cell_offset(payload_len - 4);
+  pad_offset = get_pad_cell_offset(payload_len - 4, 0);
   tt_int_op(pad_offset, OP_EQ, 0);
   tt_int_op(CELL_PAYLOAD_SIZE - pad_offset, OP_LE, CELL_PAYLOAD_SIZE);
 
   /* We should have 1 byte of padding. Meaning, the offset should be the
    * CELL_PAYLOAD_SIZE minus 1 byte. */
   expected_offset = CELL_PAYLOAD_SIZE - 1;
-  pad_offset = get_pad_cell_offset(payload_len - 5);
+  pad_offset = get_pad_cell_offset(payload_len - 5, 0);
   tt_int_op(pad_offset, OP_EQ, expected_offset);
   tt_int_op(CELL_PAYLOAD_SIZE - pad_offset, OP_LE, CELL_PAYLOAD_SIZE);
 
   /* Now some arbitrary small payload length. The cell size is header + 10 +
    * extra 4 bytes we keep so the offset should be there. */
   expected_offset = RELAY_HEADER_SIZE + 10 + 4;
-  pad_offset = get_pad_cell_offset(10);
+  pad_offset = get_pad_cell_offset(10, 0);
   tt_int_op(pad_offset, OP_EQ, expected_offset);
   tt_int_op(CELL_PAYLOAD_SIZE - pad_offset, OP_LE, CELL_PAYLOAD_SIZE);
 
   /* Data length of 0. */
   expected_offset = RELAY_HEADER_SIZE + 4;
-  pad_offset = get_pad_cell_offset(0);
+  pad_offset = get_pad_cell_offset(0, 0);
   tt_int_op(pad_offset, OP_EQ, expected_offset);
   tt_int_op(CELL_PAYLOAD_SIZE - pad_offset, OP_LE, CELL_PAYLOAD_SIZE);
 
