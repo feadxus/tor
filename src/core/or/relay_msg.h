@@ -28,6 +28,7 @@ void relay_msg_set(const uint8_t relay_cell_proto, const uint8_t cmd,
 /* Codec. */
 void relay_msg_codec_init(relay_msg_codec_t *codec, uint8_t relay_cell_proto);
 void relay_msg_codec_clear(relay_msg_codec_t *codec);
+void relay_msg_queue_packable(relay_msg_codec_t *codec, relay_msg_t *msg);
 
 /* Decoder/Encoder. */
 bool relay_msg_decode_cell(relay_msg_codec_t *codec, const cell_t *cell);

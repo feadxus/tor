@@ -52,6 +52,20 @@ get_param_enabled(const networkstatus_t *ns)
                                  RELAY_MSG_PARAM_ENABLED_MAX) != 0;
 }
 
+/** Return true iff the given commadn is allowed to be packed. */
+static inline bool
+relay_command_is_packable(const uint8_t cmd)
+{
+  switch (cmd) {
+  case RELAY_COMMAND_CONFLUX_SWITCH:
+  case RELAY_COMMAND_XON:
+  case RELAY_COMMAND_XOFF:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /** Return true iff the given command is allowed to have a stream ID of 0. */
 static inline bool
 relay_command_requires_stream_id(const uint8_t cmd)
@@ -897,4 +911,22 @@ relay_msg_get_codec(circuit_t *circ, crypt_path_t *cpath)
      * only an origin circuit is given which again not allowed. */
     tor_assert_unreached();
   }
+}
+
+/** Queue a relay message to be packed as soon as possible with the next
+ * message. */
+void
+relay_msg_queue_packable(relay_msg_codec_t *codec, relay_msg_t *msg)
+{
+  tor_assert(codec);
+  tor_assert(msg);
+
+  /* Catch anything trying to be queued for proto version 0. */
+  if (BUG(codec->relay_cell_proto == 0)) {
+    return;
+  }
+  if (BUG(!relay_command_is_packable(msg->command))) {
+    return;
+  }
+  smartlist_add(codec->pending_packable_msg, msg);
 }
