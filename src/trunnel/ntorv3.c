@@ -28,6 +28,159 @@ int ntorv_deadcode_dummy__ = 0;
     }                                                            \
   } while (0)
 
+trn_ntorv3_ext_cc_response_t *
+trn_ntorv3_ext_cc_response_new(void)
+{
+  trn_ntorv3_ext_cc_response_t *val = trunnel_calloc(1, sizeof(trn_ntorv3_ext_cc_response_t));
+  if (NULL == val)
+    return NULL;
+  return val;
+}
+
+/** Release all storage held inside 'obj', but do not free 'obj'.
+ */
+static void
+trn_ntorv3_ext_cc_response_clear(trn_ntorv3_ext_cc_response_t *obj)
+{
+  (void) obj;
+}
+
+void
+trn_ntorv3_ext_cc_response_free(trn_ntorv3_ext_cc_response_t *obj)
+{
+  if (obj == NULL)
+    return;
+  trn_ntorv3_ext_cc_response_clear(obj);
+  trunnel_memwipe(obj, sizeof(trn_ntorv3_ext_cc_response_t));
+  trunnel_free_(obj);
+}
+
+uint8_t
+trn_ntorv3_ext_cc_response_get_sendme_inc(const trn_ntorv3_ext_cc_response_t *inp)
+{
+  return inp->sendme_inc;
+}
+int
+trn_ntorv3_ext_cc_response_set_sendme_inc(trn_ntorv3_ext_cc_response_t *inp, uint8_t val)
+{
+  inp->sendme_inc = val;
+  return 0;
+}
+const char *
+trn_ntorv3_ext_cc_response_check(const trn_ntorv3_ext_cc_response_t *obj)
+{
+  if (obj == NULL)
+    return "Object was NULL";
+  if (obj->trunnel_error_code_)
+    return "A set function failed on this object";
+  return NULL;
+}
+
+ssize_t
+trn_ntorv3_ext_cc_response_encoded_len(const trn_ntorv3_ext_cc_response_t *obj)
+{
+  ssize_t result = 0;
+
+  if (NULL != trn_ntorv3_ext_cc_response_check(obj))
+     return -1;
+
+
+  /* Length of u8 sendme_inc */
+  result += 1;
+  return result;
+}
+int
+trn_ntorv3_ext_cc_response_clear_errors(trn_ntorv3_ext_cc_response_t *obj)
+{
+  int r = obj->trunnel_error_code_;
+  obj->trunnel_error_code_ = 0;
+  return r;
+}
+ssize_t
+trn_ntorv3_ext_cc_response_encode(uint8_t *output, const size_t avail, const trn_ntorv3_ext_cc_response_t *obj)
+{
+  ssize_t result = 0;
+  size_t written = 0;
+  uint8_t *ptr = output;
+  const char *msg;
+#ifdef TRUNNEL_CHECK_ENCODED_LEN
+  const ssize_t encoded_len = trn_ntorv3_ext_cc_response_encoded_len(obj);
+#endif
+
+  if (NULL != (msg = trn_ntorv3_ext_cc_response_check(obj)))
+    goto check_failed;
+
+#ifdef TRUNNEL_CHECK_ENCODED_LEN
+  trunnel_assert(encoded_len >= 0);
+#endif
+
+  /* Encode u8 sendme_inc */
+  trunnel_assert(written <= avail);
+  if (avail - written < 1)
+    goto truncated;
+  trunnel_set_uint8(ptr, (obj->sendme_inc));
+  written += 1; ptr += 1;
+
+
+  trunnel_assert(ptr == output + written);
+#ifdef TRUNNEL_CHECK_ENCODED_LEN
+  {
+    trunnel_assert(encoded_len >= 0);
+    trunnel_assert((size_t)encoded_len == written);
+  }
+
+#endif
+
+  return written;
+
+ truncated:
+  result = -2;
+  goto fail;
+ check_failed:
+  (void)msg;
+  result = -1;
+  goto fail;
+ fail:
+  trunnel_assert(result < 0);
+  return result;
+}
+
+/** As trn_ntorv3_ext_cc_response_parse(), but do not allocate the
+ * output object.
+ */
+static ssize_t
+trn_ntorv3_ext_cc_response_parse_into(trn_ntorv3_ext_cc_response_t *obj, const uint8_t *input, const size_t len_in)
+{
+  const uint8_t *ptr = input;
+  size_t remaining = len_in;
+  ssize_t result = 0;
+  (void)result;
+
+  /* Parse u8 sendme_inc */
+  CHECK_REMAINING(1, truncated);
+  obj->sendme_inc = (trunnel_get_uint8(ptr));
+  remaining -= 1; ptr += 1;
+  trunnel_assert(ptr + remaining == input + len_in);
+  return len_in - remaining;
+
+ truncated:
+  return -2;
+}
+
+ssize_t
+trn_ntorv3_ext_cc_response_parse(trn_ntorv3_ext_cc_response_t **output, const uint8_t *input, const size_t len_in)
+{
+  ssize_t result;
+  *output = trn_ntorv3_ext_cc_response_new();
+  if (NULL == *output)
+    return -1;
+  result = trn_ntorv3_ext_cc_response_parse_into(*output, input, len_in);
+  if (result < 0) {
+    trn_ntorv3_ext_cc_response_free(*output);
+    *output = NULL;
+  }
+  return result;
+}
 trn_ntorv3_ext_subproto_req_t *
 trn_ntorv3_ext_subproto_req_new(void)
 {

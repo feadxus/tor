@@ -1,8 +1,13 @@
+/* This file contains the definition for the encrypted payload of a circuit
+ * parameter negotiation request/response portion of the trn_ntorv3 onionskin
+ * handshake. */
+
 /*
- * The ntorv3 extension type value in order to recognize the subproto
- * extension.
+ * The ntorv3 extension type value.
  */
-const TRUNNEL_EXT_TYPE_SUBPROTO_REQ = 0x03;
+const TRUNNEL_NTORV3_EXT_TYPE_CC_REQ       = 0x01;
+const TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE  = 0x02;
+const TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ = 0x03;
 
 /*
  * Extension used to negotiate subprotocol versions detailed in proposal 346.
@@ -20,3 +25,17 @@ struct trn_ntorv3_ext_subproto_req {
   /* Protocol version being requested. */
   u8 proto_version;
 }
+
+/*
+ * Congestion Control
+ */
+
+/* "Request" is an empty payload signalling that CC is enabled. */
+
+/*
+ * "Response" consists of 1 single byte:
+ *    SENDME_INC -- Min: 0, Max: 255
+ */
+struct trn_ntorv3_ext_cc_response {
+  u8 sendme_inc;
+};

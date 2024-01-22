@@ -30,8 +30,8 @@
 #include "feature/nodelist/networkstatus.h"
 #include "app/config/config.h"
 
-#include "trunnel/congestion_control.h"
 #include "trunnel/extension.h"
+#include "trunnel/ntorv3.h"
 
 /* Consensus parameter defaults.
  *
@@ -1006,8 +1006,7 @@ congestion_control_build_ext_request(void)
 
   /* Build the extension field that will hold the CC field. */
   field = trn_extension_field_new();
-  trn_extension_field_set_field_type(field,
-                                     TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST);
+  trn_extension_field_set_field_type(field, TRUNNEL_NTORV3_EXT_TYPE_CC_REQ);
 
   /* No payload indicating a request to use congestion control. */
   trn_extension_field_set_field_len(field, 0);
@@ -1029,7 +1028,7 @@ congestion_control_ntor3_parse_ext_request(const trn_extension_field_t *ext,
 {
   tor_assert(ext);
   tor_assert(trn_extension_field_get_field_type(ext) ==
-             TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST);
+             TRUNNEL_NTORV3_EXT_TYPE_CC_REQ);
 
   /* The presence of the extension is enough to indicate we want it enabled. */
   params_out->cc_enabled = true;
@@ -1051,21 +1050,21 @@ congestion_control_ntor3_build_ext_response(const circuit_params_t *our_params)
 {
   ssize_t ret;
   trn_extension_field_t *field = NULL;
-  trn_extension_field_cc_t *cc_field = NULL;
+  trn_ntorv3_ext_cc_response_t *cc_field = NULL;
 
   tor_assert(our_params);
 
   /* Build the extension field that will hold the CC field. */
   field = trn_extension_field_new();
   trn_extension_field_set_field_type(field,
-                      TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE);
+                                     TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE);
 
   /* Build the congestion control field response. */
-  cc_field = trn_extension_field_cc_new();
-  trn_extension_field_cc_set_sendme_inc(cc_field,
-                                        our_params->sendme_inc_cells);
+  cc_field = trn_ntorv3_ext_cc_response_new();
+  trn_ntorv3_ext_cc_response_set_sendme_inc(cc_field,
+                                            our_params->sendme_inc_cells);
 
-  ret = trn_extension_field_cc_encoded_len(cc_field);
+  ret = trn_ntorv3_ext_cc_response_encoded_len(cc_field);
   if (BUG(ret <= 0)) {
     trn_extension_field_free(field);
     field = NULL;
@@ -1076,7 +1075,7 @@ congestion_control_ntor3_build_ext_response(const circuit_params_t *our_params)
   trn_extension_field_setlen_field(field, field_len);
 
   uint8_t *field_array = trn_extension_field_getarray_field(field);
-  ret = trn_extension_field_cc_encode(field_array,
+  ret = trn_ntorv3_ext_cc_response_encode(field_array,
             trn_extension_field_getlen_field(field), cc_field);
   if (BUG(ret <= 0)) {
     trn_extension_field_free(field);
@@ -1085,7 +1084,7 @@ congestion_control_ntor3_build_ext_response(const circuit_params_t *our_params)
   }
 
  err:
-  trn_extension_field_cc_free(cc_field);
+  trn_ntorv3_ext_cc_response_free(cc_field);
   return field;
 }
 
@@ -1108,78 +1107,6 @@ congestion_control_validate_sendme_increment(uint8_t sendme_inc)
     return false;
   }
   return true;
-}
-
-/** Return 1 if CC is enabled which also will set the SENDME increment into our
- * params_out. Return 0 if CC is disabled. Else, return -1 on error. */
-int
-congestion_control_parse_ext_response(const uint8_t *msg,
-                                      const size_t msg_len,
-                                      circuit_params_t *params_out)
-{
-  ssize_t ret = 0;
-  size_t num_fields = 0;
-  trn_extension_t *ext = NULL;
-  trn_extension_field_cc_t *cc_field = NULL;
-
-  /* We will only accept this response (and this circuit) if sendme_inc
-   * is within a factor of 2 of our consensus value. We should not need
-   * to change cc_sendme_inc much, and if we do, we can spread out those
-   * changes over smaller increments once every 4 hours. Exits that
-   * violate this range should just not be used. */
-#define MAX_SENDME_INC_NEGOTIATE_FACTOR 2
-
-  /* Parse extension from payload. */
-  ret = trn_extension_parse(&ext, msg, msg_len);
-  if (ret < 0) {
-    goto end;
-  }
-
-  if ((num_fields = trn_extension_get_num(ext)) == 0) {
-    ret = 0;
-    goto end;
-  }
-
-  /* Go over all fields. If any field is TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE,
-   * then congestion control is enabled. Ignore unknown fields. */
-  for (size_t f = 0; f < num_fields; f++) {
-    const trn_extension_field_t *field = trn_extension_get_fields(ext, f);
-    if (field == NULL) {
-      ret = -1;
-      goto end;
-    }
-
-    /* Only examine TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE; ignore other fields */
-    if (trn_extension_field_get_field_type(field) ==
-        TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE) {
-
-      /* Parse the field into the congestion control field. */
-      ret = trn_extension_field_cc_parse(&cc_field,
-                trn_extension_field_getconstarray_field(field),
-                trn_extension_field_getlen_field(field));
-      if (ret < 0) {
-        goto end;
-      }
-
-      uint8_t sendme_inc_cells =
-              trn_extension_field_cc_get_sendme_inc(cc_field);
-      if (!congestion_control_validate_sendme_increment(sendme_inc_cells)) {
-        ret = -1;
-        goto end;
-      }
-
-      /* All good. Get value and break */
-      params_out->sendme_inc_cells = sendme_inc_cells;
-      ret = 1;
-      break;
-    }
-  }
-
- end:
-  trn_extension_free(ext);
-  trn_extension_field_cc_free(cc_field);
-
-  return (int)ret;
 }
 
 /**

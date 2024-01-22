@@ -49,7 +49,6 @@
 #include "core/or/crypt_path_st.h"
 #include "core/or/extend_info_st.h"
 
-#include "trunnel/congestion_control.h"
 #include "trunnel/extension.h"
 #include "trunnel/ntorv3.h"
 
@@ -138,7 +137,7 @@ parse_ntor3_server_ext(const uint8_t *data, size_t data_len,
     case TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ:
       ret = parse_subproto_extension(field, params_out);
       break;
-    case TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST:
+    case TRUNNEL_NTORV3_EXT_TYPE_CC_REQ:
       ret = congestion_control_ntor3_parse_ext_request(field, params_out);
       break;
     default:

@@ -8,7 +8,16 @@
 #include <stdint.h>
 #include "trunnel.h"
 
-#define TRUNNEL_EXT_TYPE_SUBPROTO_REQ 3
+#define TRUNNEL_NTORV3_EXT_TYPE_CC_REQ 1
+#define TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE 2
+#define TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ 3
+#if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_TRN_NTORV3_EXT_CC_RESPONSE)
+struct trn_ntorv3_ext_cc_response_st {
+  uint8_t sendme_inc;
+  uint8_t trunnel_error_code_;
+};
+#endif
+typedef struct trn_ntorv3_ext_cc_response_st trn_ntorv3_ext_cc_response_t;
 #if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_TRN_NTORV3_EXT_SUBPROTO_REQ)
 struct trn_ntorv3_ext_subproto_req_st {
   uint8_t proto_id;
@@ -24,6 +33,52 @@ struct trn_ntorv3_ext_subproto_st {
 };
 #endif
 typedef struct trn_ntorv3_ext_subproto_st trn_ntorv3_ext_subproto_t;
+/** Return a newly allocated trn_ntorv3_ext_cc_response with all
+ * elements set to zero.
+ */
+trn_ntorv3_ext_cc_response_t *trn_ntorv3_ext_cc_response_new(void);
+/** Release all storage held by the trn_ntorv3_ext_cc_response in
+ * 'victim'. (Do nothing if 'victim' is NULL.)
+ */
+void trn_ntorv3_ext_cc_response_free(trn_ntorv3_ext_cc_response_t *victim);
+/** Try to parse a trn_ntorv3_ext_cc_response from the buffer in
+ * 'input', using up to 'len_in' bytes from the input buffer. On
+ * success, return the number of bytes consumed and set *output to the
+ * newly allocated trn_ntorv3_ext_cc_response_t. On failure, return -2
+ * if the input appears truncated, and -1 if the input is otherwise
+ * invalid.
+ */
+ssize_t trn_ntorv3_ext_cc_response_parse(trn_ntorv3_ext_cc_response_t **output, const uint8_t *input, const size_t len_in);
+/** Return the number of bytes we expect to need to encode the
+ * trn_ntorv3_ext_cc_response in 'obj'. On failure, return a negative
+ * value. Note that this value may be an overestimate, and can even be
+ * an underestimate for certain unencodeable objects.
+ */
+ssize_t trn_ntorv3_ext_cc_response_encoded_len(const trn_ntorv3_ext_cc_response_t *obj);
+/** Try to encode the trn_ntorv3_ext_cc_response from 'input' into the
+ * buffer at 'output', using up to 'avail' bytes of the output buffer.
+ * On success, return the number of bytes used. On failure, return -2
+ * if the buffer was not long enough, and -1 if the input was invalid.
+ */
+ssize_t trn_ntorv3_ext_cc_response_encode(uint8_t *output, size_t avail, const trn_ntorv3_ext_cc_response_t *input);
+/** Check whether the internal state of the trn_ntorv3_ext_cc_response
+ * in 'obj' is consistent. Return NULL if it is, and a short message
+ * if it is not.
+ */
+const char *trn_ntorv3_ext_cc_response_check(const trn_ntorv3_ext_cc_response_t *obj);
+/** Clear any errors that were set on the object 'obj' by its setter
+ * functions. Return true iff errors were cleared.
+ */
+int trn_ntorv3_ext_cc_response_clear_errors(trn_ntorv3_ext_cc_response_t *obj);
+/** Return the value of the sendme_inc field of the
+ * trn_ntorv3_ext_cc_response_t in 'inp'
+ */
+uint8_t trn_ntorv3_ext_cc_response_get_sendme_inc(const trn_ntorv3_ext_cc_response_t *inp);
+/** Set the value of the sendme_inc field of the
+ * trn_ntorv3_ext_cc_response_t in 'inp' to 'val'. Return 0 on
+ * success; return -1 and set the error code on 'inp' on failure.
+ */
+int trn_ntorv3_ext_cc_response_set_sendme_inc(trn_ntorv3_ext_cc_response_t *inp, uint8_t val);
 /** Return a newly allocated trn_ntorv3_ext_subproto_req with all
  * elements set to zero.
  */

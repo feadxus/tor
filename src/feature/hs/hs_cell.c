@@ -19,9 +19,9 @@
 #include "core/or/origin_circuit_st.h"
 
 /* Trunnel. */
-#include "trunnel/congestion_control.h"
 #include "trunnel/ed25519_cert.h"
 #include "trunnel/extension.h"
+#include "trunnel/ntorv3.h"
 #include "trunnel/hs/cell_establish_intro.h"
 #include "trunnel/hs/cell_introduce1.h"
 #include "trunnel/hs/cell_rendezvous.h"
@@ -937,7 +937,6 @@ parse_introduce_cell_extension(const hs_service_t *service,
                                const trn_extension_field_t *field)
 {
   int ret = 0;
-  trn_extension_field_cc_t *cc_field = NULL;
 
   tor_assert(data);
   tor_assert(field);
@@ -961,7 +960,6 @@ parse_introduce_cell_extension(const hs_service_t *service,
     break;
   }
 
-  trn_extension_field_cc_free(cc_field);
   return ret;
 }
 

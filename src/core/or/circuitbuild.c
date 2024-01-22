@@ -84,7 +84,6 @@
 #include "core/or/origin_circuit_st.h"
 
 #include "trunnel/extension.h"
-#include "trunnel/congestion_control.h"
 
 static int circuit_send_first_onion_skin(origin_circuit_t *circ);
 static int circuit_build_no_more_hops(origin_circuit_t *circ);
