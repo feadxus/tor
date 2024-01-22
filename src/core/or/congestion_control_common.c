@@ -997,211 +997,96 @@ congestion_control_dispatch_cc_alg(congestion_control_t *cc,
 /**
  * Build an extension field request to negotiate congestion control.
  *
- * If congestion control is enabled, field TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST
- * is created in msg_out. It is a single 0-length field that signifies that we
- * want to use congestion control. The length of msg_out is provided via
- * msg_len_out.
- *
- * If congestion control is not enabled, a payload with 0 extensions is created
- * and returned.
- *
- * If there is a failure building the request, -1 is returned, else 0.
- *
- * *msg_out must be freed if the return value is 0.
+ * Return the extension field ready for encoding or NULL on error.
  */
-int
-congestion_control_build_ext_request(uint8_t **msg_out, size_t *msg_len_out)
+trn_extension_field_t *
+congestion_control_build_ext_request(void)
 {
-  uint8_t *request = NULL;
-  trn_extension_t *ext = NULL;
   trn_extension_field_t *field = NULL;
 
-  ext = trn_extension_new();
+  /* Build the extension field that will hold the CC field. */
+  field = trn_extension_field_new();
+  trn_extension_field_set_field_type(field,
+                                     TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST);
 
-  /* With congestion control enabled, add the request, else it is an empty
-   * request in the payload. */
+  /* No payload indicating a request to use congestion control. */
+  trn_extension_field_set_field_len(field, 0);
 
-  if (congestion_control_enabled()) {
-    /* Build the extension field that will hold the CC field. */
-    field = trn_extension_field_new();
-    trn_extension_field_set_field_type(field,
-                                       TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST);
-
-    /* No payload indicating a request to use congestion control. */
-    trn_extension_field_set_field_len(field, 0);
-
-    /* Build final extension. */
-    trn_extension_add_fields(ext, field);
-    trn_extension_set_num(ext, 1);
-  }
-
-  /* Encode extension. */
-  ssize_t ret = trn_extension_encoded_len(ext);
-  if (BUG(ret < 0)) {
-    goto err;
-  }
-  size_t request_len = ret;
-  request = tor_malloc_zero(request_len);
-  ret = trn_extension_encode(request, request_len, ext);
-  if (BUG(ret < 0)) {
-    tor_free(request);
-    goto err;
-  }
-  *msg_out = request;
-  *msg_len_out = request_len;
-
-  /* Free everything, we've encoded the request now. */
-  ret = 0;
-
- err:
-  trn_extension_free(ext);
-  return (int)ret;
+  return field;
 }
 
 /**
  * Parse a congestion control ntorv3 request payload for extensions.
  *
- * On parsing failure, -1 is returned.
- *
- * If congestion control request is present, return 1. If it is not present,
- * return 0.
+ * Return true iff the extension can be successfully parsed.
  *
  * WARNING: Called from CPU worker! Must not access any global state.
+ * WARNING: Data set in params out is NOT validated for coherence.
  */
-int
-congestion_control_parse_ext_request(const uint8_t *msg, const size_t msg_len)
+bool
+congestion_control_ntor3_parse_ext_request(const trn_extension_field_t *ext,
+                                           circuit_params_t *params_out)
 {
-  ssize_t ret = 0;
-  trn_extension_t *ext = NULL;
-  size_t num_fields = 0;
+  tor_assert(ext);
+  tor_assert(trn_extension_field_get_field_type(ext) ==
+             TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST);
 
-  /* Parse extension from payload. */
-  ret = trn_extension_parse(&ext, msg, msg_len);
-  if (ret < 0) {
-    goto end;
-  }
-
-  /* No extension implies no support for congestion control. In this case, we
-   * simply return 0 to indicate CC is disabled. */
-  if ((num_fields = trn_extension_get_num(ext)) == 0) {
-    ret = 0;
-    goto end;
-  }
-
-  /* Go over all fields. If any field is TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST,
-   * then congestion control is enabled. Ignore unknown fields. */
-  for (size_t f = 0; f < num_fields; f++) {
-    const trn_extension_field_t *field = trn_extension_get_fields(ext, f);
-    if (field == NULL) {
-      ret = -1;
-      goto end;
-    }
-
-    /* For congestion control to be enabled, we only need the field type. */
-    if (trn_extension_field_get_field_type(field) ==
-        TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST) {
-      ret = 1;
-      break;
-    }
-  }
-
- end:
-  trn_extension_free(ext);
-  return (int)ret;
+  /* The presence of the extension is enough to indicate we want it enabled. */
+  params_out->cc_enabled = true;
+  return true;
 }
 
-/**
- * Given our observed parameters for circuits and congestion control,
- * as well as the parameters for the resulting circuit, build a response
- * payload using extension fields into *msg_out, with length specified in
- * *msg_out_len.
+/** Given our observed parameters for circuits and congestion control, as well
+ * as the parameters for the resulting circuit, build a response payload
+ * extension field.
  *
- * If congestion control will be enabled, the extension field for
- * TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE will contain the sendme_inc value.
+ * The extension field for TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE will contain the
+ * sendme_inc value.
  *
- * If congestion control won't be enabled, an extension payload with 0
- * fields will be created.
+ * Return the extension field on success else NULL.
  *
- * Return 0 if an extension payload was created in *msg_out, and -1 on
- * error.
- *
- * *msg_out must be freed if the return value is 0.
- *
- * WARNING: Called from CPU worker! Must not access any global state.
- */
-int
-congestion_control_build_ext_response(const circuit_params_t *our_params,
-                                      const circuit_params_t *circ_params,
-                                      uint8_t **msg_out, size_t *msg_len_out)
+ * WARNING: Called from CPU worker! Must not access any global state. */
+trn_extension_field_t *
+congestion_control_ntor3_build_ext_response(const circuit_params_t *our_params)
 {
   ssize_t ret;
-  uint8_t *request = NULL;
-  trn_extension_t *ext = NULL;
   trn_extension_field_t *field = NULL;
   trn_extension_field_cc_t *cc_field = NULL;
 
   tor_assert(our_params);
-  tor_assert(circ_params);
-  tor_assert(msg_out);
-  tor_assert(msg_len_out);
 
-  ext = trn_extension_new();
+  /* Build the extension field that will hold the CC field. */
+  field = trn_extension_field_new();
+  trn_extension_field_set_field_type(field,
+                      TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE);
 
-  if (circ_params->cc_enabled) {
-    /* Build the extension field that will hold the CC field. */
-    field = trn_extension_field_new();
-    trn_extension_field_set_field_type(field,
-                                       TRUNNEL_EXT_TYPE_CC_FIELD_RESPONSE);
+  /* Build the congestion control field response. */
+  cc_field = trn_extension_field_cc_new();
+  trn_extension_field_cc_set_sendme_inc(cc_field,
+                                        our_params->sendme_inc_cells);
 
-    /* Build the congestion control field response. */
-    cc_field = trn_extension_field_cc_new();
-    trn_extension_field_cc_set_sendme_inc(cc_field,
-                                          our_params->sendme_inc_cells);
-
-    ret = trn_extension_field_cc_encoded_len(cc_field);
-    if (BUG(ret <= 0)) {
-      trn_extension_field_free(field);
-      goto err;
-    }
-    size_t field_len = ret;
-    trn_extension_field_set_field_len(field, field_len);
-    trn_extension_field_setlen_field(field, field_len);
-
-    uint8_t *field_array = trn_extension_field_getarray_field(field);
-    ret = trn_extension_field_cc_encode(field_array,
-              trn_extension_field_getlen_field(field), cc_field);
-    if (BUG(ret <= 0)) {
-      trn_extension_field_free(field);
-      goto err;
-    }
-
-    /* Build final extension. */
-    trn_extension_add_fields(ext, field);
-    trn_extension_set_num(ext, 1);
-  }
-
-  /* Encode extension. */
-  ret = trn_extension_encoded_len(ext);
-  if (BUG(ret < 0)) {
+  ret = trn_extension_field_cc_encoded_len(cc_field);
+  if (BUG(ret <= 0)) {
+    trn_extension_field_free(field);
+    field = NULL;
     goto err;
   }
-  size_t request_len = ret;
-  request = tor_malloc_zero(request_len);
-  ret = trn_extension_encode(request, request_len, ext);
-  if (BUG(ret < 0)) {
-    tor_free(request);
+  size_t field_len = ret;
+  trn_extension_field_set_field_len(field, field_len);
+  trn_extension_field_setlen_field(field, field_len);
+
+  uint8_t *field_array = trn_extension_field_getarray_field(field);
+  ret = trn_extension_field_cc_encode(field_array,
+            trn_extension_field_getlen_field(field), cc_field);
+  if (BUG(ret <= 0)) {
+    trn_extension_field_free(field);
+    field = NULL;
     goto err;
   }
-  *msg_out = request;
-  *msg_len_out = request_len;
-
-  /* We've just encoded the extension, clean everything. */
-  ret = 0;
 
  err:
-  trn_extension_free(ext);
   trn_extension_field_cc_free(cc_field);
-  return (int)ret;
+  return field;
 }
 
 /** Return true iff the given sendme increment is within the acceptable

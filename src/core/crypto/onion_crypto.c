@@ -139,9 +139,10 @@ parse_ntor3_server_ext(const uint8_t *data, size_t data_len,
       ret = parse_subproto_extension(field, params_out);
       break;
     case TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST:
-      /* Ignore CC field, it is parsed elsewhere. */
+      ret = congestion_control_ntor3_parse_ext_request(field, params_out);
       break;
     default:
+      /* We refuse unknown extensions. */
       ret = false;
       break;
     }
@@ -279,8 +280,9 @@ onion_skin_create(int type,
       return -1;
     size_t msg_len = 0;
     uint8_t *msg = NULL;
-    if (client_circ_negotiation_message(node, &msg, &msg_len) < 0)
+    if (!client_circ_negotiation_message(node, &msg, &msg_len)) {
       return -1;
+    }
     uint8_t *onion_skin = NULL;
     size_t onion_skin_len = 0;
     int status = onion_skin_ntor3_create(
@@ -318,6 +320,81 @@ onion_skin_create(int type,
   return r;
 }
 
+/* Avoid code duplication into one convenient macro. */
+#define TRN_ADD_FIELD(ext, field) \
+  do { \
+    trn_extension_add_fields(ext, field); \
+    trn_extension_set_num(ext, trn_extension_get_num(ext) + 1); \
+  } while (0)
+
+/** Build the ntorv3 extension response server side.
+ *
+ * The ext_circ_params must be coherent and valid values that we are ready to
+ * send back. The values in this object are also used to know if we have to
+ * build the response or not.
+ *
+ * Return true on success and the resp_msg_out contains the encoded extension.
+ * On error, false and everything is untouched. */
+static bool
+build_ntor3_ext_response_server(const circuit_params_t *our_ns_params,
+                                const circuit_params_t *ext_circ_params,
+                                uint8_t **resp_msg_out,
+                                size_t *resp_msg_len_out)
+{
+  uint8_t *encoded = NULL;
+  trn_extension_field_t *response = NULL;
+  trn_extension_t *ext = trn_extension_new();
+
+  /* Build the congestion control response. */
+  if (ext_circ_params->cc_enabled) {
+    response = congestion_control_ntor3_build_ext_response(our_ns_params);
+    if (!response) {
+      goto err;
+    }
+    TRN_ADD_FIELD(ext, response);
+  }
+
+  /* Encode response extension. */
+  ssize_t encoded_len = trn_extension_encoded_len(ext);
+  if (BUG(encoded_len < 0)) {
+    goto err;
+  }
+  encoded = tor_malloc_zero(encoded_len);
+  if (BUG(trn_extension_encode(encoded, encoded_len, ext) < 0)) {
+    goto err;
+  }
+  *resp_msg_out = encoded;
+  *resp_msg_len_out = encoded_len;
+
+  trn_extension_free(ext);
+  return true;
+
+ err:
+  tor_free(encoded);
+  trn_extension_free(ext);
+  return false;
+}
+
+/** Return true iff the given circ_params are coherent and valid based on
+ * our_ns_params and global configuration.
+ *
+ * For congestion control, the cc_enabled can be flipped depending on what is
+ * enabled server side.
+ *
+ * This function runs in a worker thread, so it can only inspect
+ * arguments and local variables. */
+static bool
+validate_ntor3_params_server(const circuit_params_t *our_ns_params,
+                             circuit_params_t *circ_params)
+{
+  /* Validation is done through changing the value from what we can do server
+   * side. Essentially, is congestion control enabled on our end or not? */
+  circ_params->cc_enabled =
+      circ_params->cc_enabled && our_ns_params->cc_enabled;
+
+  return true;
+}
+
 /**
  * Takes a param request message from the client, compares it to our
  * consensus parameters, and creates a reply message and output
@@ -345,20 +422,20 @@ negotiate_v3_ntor_server_circ_params(const uint8_t *param_request_msg,
     goto err;
   }
 
-  /* Parse request. */
-  ret = congestion_control_parse_ext_request(param_request_msg,
-                                             param_request_len);
-  if (ret < 0) {
+  /* Passing validation means our params_out are now valid and coherent and
+   * thus can be safely used it in our response and configuration. */
+  if (!validate_ntor3_params_server(our_ns_params, params_out)) {
     goto err;
   }
-  params_out->cc_enabled = ret && our_ns_params->cc_enabled;
 
-  /* Build the response. */
-  ret = congestion_control_build_ext_response(our_ns_params, params_out,
-                                              resp_msg_out, resp_msg_len_out);
-  if (ret < 0) {
+  /* Build the response extension if any. */
+  if (!build_ntor3_ext_response_server(our_ns_params, params_out,
+                                       resp_msg_out, resp_msg_len_out)) {
     goto err;
   }
+
+  /* At this point, the responses have been built and successfully encoded so
+   * we can set our sendme increment and start using it. */
   params_out->sendme_inc_cells = our_ns_params->sendme_inc_cells;
 
   /* Success. */

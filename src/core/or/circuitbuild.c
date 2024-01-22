@@ -2701,19 +2701,47 @@ circuit_upgrade_circuits_from_guard_wait(void)
  * given relay.  Assumes we are using ntor v3, or some later version that
  * supports parameter negotiatoin.
  *
- * On success, return 0 and pass back a message in the `out` parameters.
- * Otherwise, return -1.
+ * On success, return true and pass back a message in the `out` parameters.
+ * Otherwise, return false.
  **/
-int
-client_circ_negotiation_message(const extend_info_t *ei,
-                                uint8_t **msg_out,
+bool
+client_circ_negotiation_message(const extend_info_t *ei, uint8_t **msg_out,
                                 size_t *msg_len_out)
 {
+  bool ret = false;
+  uint8_t *encoded = NULL;
+  trn_extension_t *ext = NULL;
+  trn_extension_field_t *field = NULL;
+
   tor_assert(ei && msg_out && msg_len_out);
 
-  if (!ei->exit_supports_congestion_control) {
-    return -1;
+  ext = trn_extension_new();
+
+  if (congestion_control_enabled() && ei->exit_supports_congestion_control) {
+    field = congestion_control_build_ext_request();
+    if (field) {
+      trn_extension_add_fields(ext, field);
+      trn_extension_set_num(ext, trn_extension_get_num(ext) + 1);
+    }
   }
 
-  return congestion_control_build_ext_request(msg_out, msg_len_out);
+  /* Encode extension. */
+  ssize_t encoded_len = trn_extension_encoded_len(ext);
+  if (BUG(encoded_len < 0)) {
+    goto end;
+  }
+  encoded = tor_malloc_zero(encoded_len);
+  if (BUG(trn_extension_encode(encoded, encoded_len, ext) < 0)) {
+    tor_free(encoded);
+    goto end;
+  }
+  *msg_out = encoded;
+  *msg_len_out = encoded_len;
+
+  /* Free everything, we've encoded the request now. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
 }
