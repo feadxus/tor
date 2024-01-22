@@ -1,4 +1,10 @@
 /*
+ * The ntorv3 extension type value in order to recognize the subproto
+ * extension.
+ */
+const TRUNNEL_EXT_TYPE_SUBPROTO_REQ = 0x03;
+
+/*
  * Extension used to negotiate subprotocol versions detailed in proposal 346.
  */
 struct trn_ntorv3_ext_subproto {

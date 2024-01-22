@@ -32,6 +32,7 @@
 
 #include "core/or/or.h"
 #include "core/or/extendinfo.h"
+#include "core/or/protover.h"
 #include "core/crypto/onion_crypto.h"
 #include "core/crypto/onion_fast.h"
 #include "core/crypto/onion_ntor.h"
@@ -50,12 +51,113 @@
 
 #include "trunnel/congestion_control.h"
 #include "trunnel/extension.h"
+#include "trunnel/ntorv3.h"
 
 static const uint8_t NTOR3_CIRC_VERIFICATION[] = "circuit extend";
 static const size_t NTOR3_CIRC_VERIFICATION_LEN = 14;
 
 #define NTOR3_VERIFICATION_ARGS \
   NTOR3_CIRC_VERIFICATION, NTOR3_CIRC_VERIFICATION_LEN
+
+/** Parse the ntor v3 subprotocol extension from the given extension field. The
+ * params_out is populated with the values found in the extension. These values
+ * are correct as they are validated.
+ *
+ * Return true iff parsing was successful. */
+static bool
+parse_subproto_extension(const trn_extension_field_t *field,
+                         circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_ntorv3_ext_subproto_t *request = NULL;
+
+  tor_assert(field);
+  tor_assert(trn_extension_field_get_field_type(field) ==
+             TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ);
+
+  if (trn_ntorv3_ext_subproto_parse(&request,
+                     trn_extension_field_getconstarray_field(field),
+                     trn_extension_field_getlen_field(field)) < 0) {
+    goto end;
+  }
+
+  for (size_t i = 0; i < trn_ntorv3_ext_subproto_getlen_reqs(request); i++) {
+    const trn_ntorv3_ext_subproto_req_t *req =
+      trn_ntorv3_ext_subproto_getconst_reqs(request, i);
+    switch (req->proto_id) {
+    case PRT_FLOWCTRL:
+      /* Unsupported version is an automatic parsing failure which should
+       * result in closing the circuit. */
+      if (!protover_is_supported_here(PRT_FLOWCTRL, req->proto_version)) {
+        ret = false;
+        goto end;
+      }
+      params_out->subproto.flow_ctrl = req->proto_version;
+      params_out->cc_enabled = true;
+      break;
+    default:
+      /* Reject any unknown values. */
+      ret = false;
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_ntorv3_ext_subproto_free(request);
+  return ret;
+}
+
+/** Parse the ntor v3 server extension(s) that is the extension destined for
+ * the server from the given data and length. The params_out is populated with
+ * the values found in any known extension.
+ *
+ * WARNING: The data put in params out is NOT validated for correctness.
+ *
+ * Return true iff parsing was successful. */
+static bool
+parse_ntor3_server_ext(const uint8_t *data, size_t data_len,
+                       circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_extension_t *ext = NULL;
+
+  /* Parse extension from payload. */
+  if (trn_extension_parse(&ext, data, data_len) < 0) {
+    goto end;
+  }
+
+  /* Go over all fields. And identify the known fields. Ignore unknowns. */
+  for (size_t idx = 0; idx < trn_extension_get_num(ext); idx++) {
+    const trn_extension_field_t *field = trn_extension_get_fields(ext, idx);
+    tor_assert(field);
+
+    switch (trn_extension_field_get_field_type(field)) {
+    case TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ:
+      ret = parse_subproto_extension(field, params_out);
+      break;
+    case TRUNNEL_EXT_TYPE_CC_FIELD_REQUEST:
+      /* Ignore CC field, it is parsed elsewhere. */
+      break;
+    default:
+      ret = false;
+      break;
+    }
+
+    if (!ret) {
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
+}
 
 /** Return a new server_onion_keys_t object with all of the keys
  * and other info we might need to do onion handshakes.  (We make a copy of
@@ -235,7 +337,13 @@ negotiate_v3_ntor_server_circ_params(const uint8_t *param_request_msg,
                                      uint8_t **resp_msg_out,
                                      size_t *resp_msg_len_out)
 {
-  int ret;
+  int ret = -1;
+
+  /* Failed to parse the extension. */
+  if (!parse_ntor3_server_ext(param_request_msg, param_request_len,
+                              params_out)) {
+    goto err;
+  }
 
   /* Parse request. */
   ret = congestion_control_parse_ext_request(param_request_msg,

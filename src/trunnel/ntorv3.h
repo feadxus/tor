@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include "trunnel.h"
 
+#define TRUNNEL_EXT_TYPE_SUBPROTO_REQ 3
 #if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_TRN_NTORV3_EXT_SUBPROTO_REQ)
 struct trn_ntorv3_ext_subproto_req_st {
   uint8_t proto_id;
