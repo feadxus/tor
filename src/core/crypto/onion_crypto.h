@@ -12,6 +12,7 @@
 #ifndef TOR_ONION_CRYPTO_H
 #define TOR_ONION_CRYPTO_H
 
+#include "core/or/or.h"
 #include "lib/crypt_ops/crypto_ed25519.h"
 
 typedef struct server_onion_keys_t {

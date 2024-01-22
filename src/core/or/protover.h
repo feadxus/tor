@@ -9,9 +9,13 @@
 #ifndef TOR_PROTOVER_H
 #define TOR_PROTOVER_H
 
+#include "core/or/or.h"
 #include <stdbool.h>
 #include "lib/cc/torint.h"
 #include "lib/testsupport/testsupport.h"
+
+#include "trunnel/extension.h"
+
 struct smartlist_t;
 
 /** The first version of Tor that included "proto" entries in its
@@ -58,6 +62,9 @@ struct smartlist_t;
 /** The protover that signals support for congestion control */
 #define PROTOVER_FLOWCTRL_CC 2
 
+/** The protover that signals support for ntorv3 subprotocol request. */
+#define PROTOVER_RELAY_NTORV3_SUBPROTO 5
+
 /** List of recognized subprotocols. */
 /// C_RUST_COUPLED: src/rust/protover/ffi.rs `translate_to_rust`
 /// C_RUST_COUPLED: src/rust/protover/protover.rs `Proto`
@@ -97,6 +104,9 @@ int protocol_list_supports_protocol_or_later(const char *list,
                                              uint32_t version);
 
 void protover_free_all(void);
+
+trn_extension_field_t *protover_build_ntor3_ext_request(
+                                            const extend_info_t *ei);
 
 #ifdef PROTOVER_PRIVATE
 /** Represents a set of ranges of subprotocols of a given type. */

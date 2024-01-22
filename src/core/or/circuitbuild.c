@@ -50,6 +50,7 @@
 #include "core/or/onion.h"
 #include "core/or/ocirc_event.h"
 #include "core/or/policies.h"
+#include "core/or/protover.h"
 #include "core/or/relay.h"
 #include "core/or/trace_probes_circuit.h"
 #include "core/or/crypt_path.h"
@@ -891,8 +892,8 @@ circuit_pick_create_handshake(uint8_t *cell_type_out,
     *cell_type_out = CELL_CREATE2;
     /* Only use ntor v3 with exits that support congestion control,
      * and only when it is enabled. */
-    if (ei->exit_supports_congestion_control &&
-        congestion_control_enabled())
+    if ((ei->exit_supports_congestion_control ||
+         ei->supports_ntorv3_subproto_req) && congestion_control_enabled())
       *handshake_type_out = ONION_HANDSHAKE_TYPE_NTOR_V3;
     else
       *handshake_type_out = ONION_HANDSHAKE_TYPE_NTOR;
@@ -2716,7 +2717,17 @@ client_circ_negotiation_message(const extend_info_t *ei, uint8_t **msg_out,
 
   ext = trn_extension_new();
 
-  if (congestion_control_enabled() && ei->exit_supports_congestion_control) {
+  /* Prioritize ntorv3 subprotocol request. */
+  if (ei->supports_ntorv3_subproto_req) {
+    field = protover_build_ntor3_ext_request(ei);
+    if (field) {
+      trn_extension_add_fields(ext, field);
+      trn_extension_set_num(ext, trn_extension_get_num(ext) + 1);
+    }
+  } else if (congestion_control_enabled() &&
+             ei->exit_supports_congestion_control) {
+    /* Fallback to old CC extension if the relay doesn't support ntorv3
+     * subproto request. */
     field = congestion_control_build_ext_request();
     if (field) {
       trn_extension_add_fields(ext, field);

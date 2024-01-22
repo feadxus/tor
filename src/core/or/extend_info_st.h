@@ -42,6 +42,9 @@ struct extend_info_t {
    * and it also supports supports NtorV3 _and_ negotiation
    * of congestion control parameters */
   bool exit_supports_congestion_control;
+  /** True iff this hop supports the ntorv3 subprotocol request which is
+   * defined by Relay=5 */
+  bool supports_ntorv3_subproto_req;
 };
 
 #endif /* !defined(EXTEND_INFO_ST_H) */
