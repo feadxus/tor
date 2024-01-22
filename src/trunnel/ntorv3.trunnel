@@ -1,0 +1,16 @@
+/*
+ * Extension used to negotiate subprotocol versions detailed in proposal 346.
+ */
+struct trn_ntorv3_ext_subproto {
+  struct trn_ntorv3_ext_subproto_req reqs[];
+}
+
+/*
+ * Single subproto request.
+ */
+struct trn_ntorv3_ext_subproto_req {
+  /* Protocol ID. */
+  u8 proto_id;
+  /* Protocol version being requested. */
+  u8 proto_version;
+}
