@@ -71,6 +71,9 @@ bool congestion_control_enabled(void);
 bool congestion_control_ntor3_parse_ext_request(
                                     const trn_extension_field_t *ext,
                                     circuit_params_t *params_out);
+bool congestion_control_ntor3_parse_ext_response(
+                                    const trn_extension_field_t *field,
+                                    circuit_params_t *params_out);
 trn_extension_field_t *congestion_control_build_ext_request(void);
 trn_extension_field_t *congestion_control_ntor3_build_ext_response(
                                           const circuit_params_t *our_params);

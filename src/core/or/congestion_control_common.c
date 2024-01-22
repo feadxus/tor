@@ -1088,6 +1088,45 @@ congestion_control_ntor3_build_ext_response(const circuit_params_t *our_params)
   return field;
 }
 
+/** Parse the given response in the extension field and populate the params_out
+ * with what we find in the extensions.
+ *
+ * Return true on success else false indicating an error. */
+bool
+congestion_control_ntor3_parse_ext_response(const trn_extension_field_t *field,
+                                            circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_ntorv3_ext_cc_response_t *cc_field = NULL;
+
+  tor_assert(field);
+  tor_assert(params_out);
+  tor_assert(trn_extension_field_get_field_type(field) ==
+             TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE);
+
+  /* Parse the field into the congestion control field. */
+  if (trn_ntorv3_ext_cc_response_parse(&cc_field,
+                        trn_extension_field_getconstarray_field(field),
+                        trn_extension_field_getlen_field(field)) < 0) {
+    goto end;
+  }
+
+  uint8_t sendme_inc_cells =
+    trn_ntorv3_ext_cc_response_get_sendme_inc(cc_field);
+  if (!congestion_control_validate_sendme_increment(sendme_inc_cells)) {
+    goto end;
+  }
+
+  /* All good. Get value and break */
+  params_out->cc_enabled = true;
+  params_out->sendme_inc_cells = sendme_inc_cells;
+  ret = true;
+
+ end:
+  trn_ntorv3_ext_cc_response_free(cc_field);
+  return ret;
+}
+
 /** Return true iff the given sendme increment is within the acceptable
  * margins. */
 bool

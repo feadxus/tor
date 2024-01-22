@@ -159,6 +159,59 @@ parse_ntor3_server_ext(const uint8_t *data, size_t data_len,
   return ret;
 }
 
+/** Parse all ntorv3 extensions and populate the params_out with the parsed
+ * values.
+ *
+ * If the extension is not present, the corresponding params_out values are
+ * untouched.
+ *
+ * The returned value in params_out are coherent but should not be considered
+ * valid. The caller must do a proper validation on them.
+ *
+ * Return true on success else false indicating a parsing error or incoherent
+ * values in an extension. */
+static bool
+parse_ntorv3_client_ext(const uint8_t *data, const size_t data_len,
+                        circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_extension_t *ext = NULL;
+
+  /* Parse extension from payload. */
+  if (trn_extension_parse(&ext, data, data_len) < 0) {
+    goto end;
+  }
+
+  for (size_t idx = 0; idx < trn_extension_get_num(ext); idx++) {
+    const trn_extension_field_t *field = trn_extension_get_fields(ext, idx);
+    if (field == NULL) {
+      ret = -1;
+      goto end;
+    }
+
+    switch (trn_extension_field_get_field_type(field)) {
+    case TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE:
+      ret = congestion_control_ntor3_parse_ext_response(field, params_out);
+      break;
+    default:
+      /* Fail on unknown extensions. */
+      ret = false;
+      break;
+    }
+
+    if (!ret) {
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
+}
+
 /** Return a new server_onion_keys_t object with all of the keys
  * and other info we might need to do onion handshakes.  (We make a copy of
  * our keys for each cpuworker to avoid race conditions with the main thread,
@@ -608,10 +661,8 @@ negotiate_v3_ntor_client_circ_params(const uint8_t *param_response_msg,
                                      size_t param_response_len,
                                      circuit_params_t *params_out)
 {
-  int ret = congestion_control_parse_ext_response(param_response_msg,
-                                                  param_response_len,
-                                                  params_out);
-  if (ret < 0) {
+  if (!parse_ntorv3_client_ext(param_response_msg, param_response_len,
+                               params_out)) {
     return -1;
   }
 
@@ -626,10 +677,9 @@ negotiate_v3_ntor_client_circ_params(const uint8_t *param_response_msg,
    * In either case, we cannot proceed on this circuit, and must try a
    * new one.
    */
-  if (ret && !congestion_control_enabled()) {
+  if (params_out->cc_enabled && !congestion_control_enabled()) {
     return -1;
   }
-  params_out->cc_enabled = ret;
 
   return 0;
 }
