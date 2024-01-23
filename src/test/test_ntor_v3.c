@@ -13,6 +13,7 @@
 #include "core/crypto/onion_crypto.h"
 #include "core/or/extend_info_st.h"
 #include "core/or/crypt_path_st.h"
+#include "core/or/protover.h"
 #define TOR_CONGESTION_CONTROL_PRIVATE
 #define TOR_CONGESTION_CONTROL_COMMON_PRIVATE
 #include "core/or/congestion_control_st.h"
@@ -192,7 +193,11 @@ run_full_handshake(circuit_params_t *serv_params_in,
   uint8_t client_keys[CELL_PAYLOAD_SIZE];
   uint8_t rend_auth[DIGEST_LEN];
 
-  info.exit_supports_congestion_control = 1;
+  if (serv_params_in->subproto.flow_ctrl != 0) {
+    info.supports_ntorv3_subproto_req = 1;
+  } else {
+    info.exit_supports_congestion_control = 1;
+  }
 
   unhex(relay_onion_key.seckey.secret_key,
         "4051daa5921cfa2a1c27b08451324919538e79e788a81b38cbed097a5dff454a");
@@ -302,6 +307,19 @@ test_ntor3_handshake(void *arg)
             serv_ns_params.sendme_inc_cells);
   tt_int_op(client_params.sendme_inc_cells, OP_NE,
             congestion_control_sendme_inc());
+
+  /* client on, serv on, sendme_inc -> serv sendme_inc. Using subproto
+   * extension. */
+  serv_ns_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
+  serv_ns_params.cc_enabled = 1;
+  serv_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
+  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(client_params.cc_enabled, OP_EQ, 1);
+  tt_int_op(serv_params.cc_enabled, OP_EQ, 1);
+  tt_int_op(serv_params.sendme_inc_cells, OP_EQ,
+            client_params.sendme_inc_cells);
+  tt_int_op(client_params.sendme_inc_cells, OP_EQ,
+            serv_ns_params.sendme_inc_cells);
 
  done:
   return;
