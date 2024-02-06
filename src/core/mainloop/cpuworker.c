@@ -633,7 +633,12 @@ assign_onionskin_to_cpuworker(or_circuit_t *circ,
    * circuit negotiation into the CPU worker context */
   req.circ_ns_params.cc_enabled = congestion_control_enabled();
   req.circ_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
-  req.circ_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  if (req.circ_ns_params.cc_enabled) {
+    req.circ_ns_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
+  }
+  if (relay_msg_is_enabled()) {
+    req.circ_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  }
 
   job = tor_malloc_zero(sizeof(cpuworker_job_t));
   job->circ = circ;

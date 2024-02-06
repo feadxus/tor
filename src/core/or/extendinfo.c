@@ -62,11 +62,10 @@ extend_info_new(const char *nickname,
   if (pv && for_exit_use) {
     info->exit_supports_congestion_control =
       pv->supports_congestion_control;
-    info->supports_relay_cell_proto =
-      pv->supports_relay_cell_proto;
   }
 
   if (pv) {
+    info->supports_relay_cell_proto = pv->supports_relay_cell_proto;
     info->supports_ntorv3_subproto_req = pv->supports_ntorv3_subproto;
   }
 

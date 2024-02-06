@@ -719,6 +719,12 @@ onion_skin_client_handshake(int type,
 
   memset(params_out, 0, sizeof(*params_out));
 
+  /* Put in the defaults. Some protover don't have server replies so if the
+   * handshake is successful, we need to set what we wanted. */
+  if (relay_msg_is_enabled()) {
+    params_out->subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  }
+
   switch (type) {
   case ONION_HANDSHAKE_TYPE_TAP:
     if (reply_len != TAP_ONIONSKIN_REPLY_LEN) {
