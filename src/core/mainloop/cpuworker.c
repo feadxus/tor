@@ -24,6 +24,8 @@
 #include "core/or/connection_or.h"
 #include "core/or/congestion_control_common.h"
 #include "core/or/congestion_control_flow.h"
+#include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "app/config/config.h"
 #include "core/mainloop/cpuworker.h"
 #include "lib/crypt_ops/crypto_rand.h"
@@ -445,6 +447,10 @@ cpuworker_onion_handshake_replyfn(void *work_)
     }
   }
 
+  /* Setup our codec with the negotiated verseion. */
+  relay_msg_codec_init(&TO_CIRCUIT(circ)->relay_msg_codec,
+                       rpl.circ_params.subproto.relay_cell);
+
   if (onionskin_answer(circ,
                        &rpl.created_cell,
                        (const char*)rpl.keys, sizeof(rpl.keys),
@@ -454,7 +460,9 @@ cpuworker_onion_handshake_replyfn(void *work_)
     goto done_processing;
   }
 
-  log_debug(LD_OR,"onionskin_answer succeeded. Yay.");
+  log_info(LD_OR, "Circuit onionskin handshake succeeded. Yay. "
+                  "Relay cell protocol version: %u",
+           rpl.circ_params.subproto.relay_cell);
 
  done_processing:
   memwipe(&rpl, 0, sizeof(rpl));
@@ -625,6 +633,12 @@ assign_onionskin_to_cpuworker(or_circuit_t *circ,
    * circuit negotiation into the CPU worker context */
   req.circ_ns_params.cc_enabled = congestion_control_enabled();
   req.circ_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
+  if (req.circ_ns_params.cc_enabled) {
+    req.circ_ns_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
+  }
+  if (relay_msg_is_enabled()) {
+    req.circ_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  }
 
   job = tor_malloc_zero(sizeof(cpuworker_job_t));
   job->circ = circ;

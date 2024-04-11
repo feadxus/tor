@@ -13,6 +13,8 @@
 #include "core/or/crypt_path_st.h"
 #include "core/or/circuit_st.h"
 
+#include "trunnel/extension.h"
+
 /* The maximum whole number of cells that can fit in a
  * full TLS record. This is 31. */
 #define TLS_RECORD_MAX_CELLS ((16 * 1024) / CELL_MAX_NETWORK_SIZE)
@@ -66,17 +68,16 @@ void congestion_control_new_consensus_params(const networkstatus_t *ns);
 
 bool congestion_control_enabled(void);
 
-int congestion_control_build_ext_request(uint8_t **msg_out,
-                                         size_t *msg_len_out);
-int congestion_control_parse_ext_request(const uint8_t *msg,
-                                         const size_t msg_len);
-int congestion_control_build_ext_response(const circuit_params_t *our_params,
-                                          const circuit_params_t *circ_params,
-                                          uint8_t **msg_out,
-                                          size_t *msg_len_out);
-int congestion_control_parse_ext_response(const uint8_t *msg,
-                                          const size_t msg_len,
-                                          circuit_params_t *params_out);
+bool congestion_control_ntor3_parse_ext_request(
+                                    const trn_extension_field_t *ext,
+                                    circuit_params_t *params_out);
+bool congestion_control_ntor3_parse_ext_response(
+                                    const trn_extension_field_t *field,
+                                    circuit_params_t *params_out);
+trn_extension_field_t *congestion_control_build_ext_request(void);
+trn_extension_field_t *congestion_control_ntor3_build_ext_response(
+                                          const circuit_params_t *our_params);
+
 bool congestion_control_validate_sendme_increment(uint8_t sendme_inc);
 char *congestion_control_get_control_port_fields(const origin_circuit_t *);
 

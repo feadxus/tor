@@ -12,6 +12,7 @@
 #ifndef TOR_ONION_CRYPTO_H
 #define TOR_ONION_CRYPTO_H
 
+#include "core/or/or.h"
 #include "lib/crypt_ops/crypto_ed25519.h"
 
 typedef struct server_onion_keys_t {
@@ -25,6 +26,12 @@ typedef struct server_onion_keys_t {
 
 void onion_handshake_state_release(onion_handshake_state_t *state);
 
+/** Negotiated subprotocol versions set after a ntorv3 handshake. */
+typedef struct circuit_subproto_t {
+  uint8_t flow_ctrl;
+  uint8_t relay_cell;
+} circuit_subproto_t;
+
 /**
  * Parameters negotiated as part of a circuit handshake.
  */
@@ -34,6 +41,8 @@ typedef struct circuit_params_t {
   bool cc_enabled;
   /** The number of cells in a sendme increment. Only used if cc_enabled=1. */
   uint8_t sendme_inc_cells;
+  /** Subprotocol version allowed on the circuit. */
+  circuit_subproto_t subproto;
 } circuit_params_t;
 
 int onion_skin_create(int type,

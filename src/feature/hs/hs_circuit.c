@@ -15,9 +15,11 @@
 #include "core/or/circuituse.h"
 #include "core/or/policies.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/crypt_path.h"
 #include "core/or/extendinfo.h"
 #include "core/or/congestion_control_common.h"
+#include "core/or/protover.h"
 #include "core/crypto/onion_crypto.h"
 #include "feature/client/circpathbias.h"
 #include "feature/hs/hs_cell.h"
@@ -145,6 +147,10 @@ finalize_rend_circuit(origin_circuit_t *circ, crypt_path_t *hop,
     hop->ccontrol = TO_CIRCUIT(circ)->ccontrol;
     TO_CIRCUIT(circ)->ccontrol = NULL;
   }
+
+  /* At the moment, onion service don't support packed and fragmented cells as
+   * in RelayCell=1 so we pin version 0 decoder. */
+  relay_msg_codec_init(&hop->relay_msg_codec, 0);
 
   /* Append the hop to the cpath of this circuit */
   cpath_extend_linked_list(&circ->cpath, hop);
@@ -938,6 +944,7 @@ hs_circ_setup_congestion_control(origin_circuit_t *origin_circ,
 
   circ_params.cc_enabled = true;
   circ_params.sendme_inc_cells = sendme_inc;
+  circ_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
 
   /* It is setup on the circuit in order to indicate that congestion control is
    * enabled. It will be transferred to the RP crypt_path_t once the handshake

@@ -219,6 +219,7 @@ src_test_test_SOURCES += \
 	src/test/test_pubsub_build.c \
 	src/test/test_pubsub_msg.c \
 	src/test/test_relay.c \
+	src/test/test_relay_msg.c \
 	src/test/test_relaycell.c \
 	src/test/test_relaycrypt.c \
 	src/test/test_replay.c \

@@ -32,6 +32,8 @@
 
 #include "core/or/or.h"
 #include "core/or/extendinfo.h"
+#include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "core/crypto/onion_crypto.h"
 #include "core/crypto/onion_fast.h"
 #include "core/crypto/onion_ntor.h"
@@ -48,14 +50,176 @@
 #include "core/or/crypt_path_st.h"
 #include "core/or/extend_info_st.h"
 
-#include "trunnel/congestion_control.h"
 #include "trunnel/extension.h"
+#include "trunnel/ntorv3.h"
 
 static const uint8_t NTOR3_CIRC_VERIFICATION[] = "circuit extend";
 static const size_t NTOR3_CIRC_VERIFICATION_LEN = 14;
 
 #define NTOR3_VERIFICATION_ARGS \
   NTOR3_CIRC_VERIFICATION, NTOR3_CIRC_VERIFICATION_LEN
+
+/** Parse the ntor v3 subprotocol extension from the given extension field. The
+ * params_out is populated with the values found in the extension. These values
+ * are correct as they are validated.
+ *
+ * Return true iff parsing was successful. */
+static bool
+parse_subproto_extension(const trn_extension_field_t *field,
+                         circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_ntorv3_ext_subproto_t *request = NULL;
+
+  tor_assert(field);
+  tor_assert(trn_extension_field_get_field_type(field) ==
+             TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ);
+
+  if (trn_ntorv3_ext_subproto_parse(&request,
+                     trn_extension_field_getconstarray_field(field),
+                     trn_extension_field_getlen_field(field)) < 0) {
+    goto end;
+  }
+
+  for (size_t i = 0; i < trn_ntorv3_ext_subproto_getlen_reqs(request); i++) {
+    const trn_ntorv3_ext_subproto_req_t *req =
+      trn_ntorv3_ext_subproto_getconst_reqs(request, i);
+    switch (req->proto_id) {
+    case PRT_FLOWCTRL:
+      /* Unsupported version is an automatic parsing failure which should
+       * result in closing the circuit. */
+      if (!protover_is_supported_here(PRT_FLOWCTRL, req->proto_version)) {
+        ret = false;
+        goto end;
+      }
+      params_out->subproto.flow_ctrl = req->proto_version;
+      params_out->cc_enabled = true;
+      break;
+    case PRT_RELAY_CELL:
+      if (!relay_msg_is_enabled() ||
+          !protover_is_supported_here(PRT_RELAY_CELL, req->proto_version)) {
+        ret = false;
+        goto end;
+      }
+      params_out->subproto.relay_cell = req->proto_version;
+      break;
+    default:
+      /* Reject any unknown values. */
+      ret = false;
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_ntorv3_ext_subproto_free(request);
+  return ret;
+}
+
+/** Parse the ntor v3 server extension(s) that is the extension destined for
+ * the server from the given data and length. The params_out is populated with
+ * the values found in any known extension.
+ *
+ * WARNING: The data put in params out is NOT validated for correctness.
+ *
+ * Return true iff parsing was successful. */
+static bool
+parse_ntor3_server_ext(const uint8_t *data, size_t data_len,
+                       circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_extension_t *ext = NULL;
+
+  /* Parse extension from payload. */
+  if (trn_extension_parse(&ext, data, data_len) < 0) {
+    goto end;
+  }
+
+  /* Go over all fields. And identify the known fields. Ignore unknowns. */
+  for (size_t idx = 0; idx < trn_extension_get_num(ext); idx++) {
+    const trn_extension_field_t *field = trn_extension_get_fields(ext, idx);
+    tor_assert(field);
+
+    switch (trn_extension_field_get_field_type(field)) {
+    case TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ:
+      ret = parse_subproto_extension(field, params_out);
+      break;
+    case TRUNNEL_NTORV3_EXT_TYPE_CC_REQ:
+      ret = congestion_control_ntor3_parse_ext_request(field, params_out);
+      break;
+    default:
+      /* We refuse unknown extensions. */
+      ret = false;
+      break;
+    }
+
+    if (!ret) {
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
+}
+
+/** Parse all ntorv3 extensions and populate the params_out with the parsed
+ * values.
+ *
+ * If the extension is not present, the corresponding params_out values are
+ * untouched.
+ *
+ * The returned value in params_out are coherent but should not be considered
+ * valid. The caller must do a proper validation on them.
+ *
+ * Return true on success else false indicating a parsing error or incoherent
+ * values in an extension. */
+static bool
+parse_ntorv3_client_ext(const uint8_t *data, const size_t data_len,
+                        circuit_params_t *params_out)
+{
+  bool ret = false;
+  trn_extension_t *ext = NULL;
+
+  /* Parse extension from payload. */
+  if (trn_extension_parse(&ext, data, data_len) < 0) {
+    goto end;
+  }
+
+  for (size_t idx = 0; idx < trn_extension_get_num(ext); idx++) {
+    const trn_extension_field_t *field = trn_extension_get_fields(ext, idx);
+    if (field == NULL) {
+      ret = -1;
+      goto end;
+    }
+
+    switch (trn_extension_field_get_field_type(field)) {
+    case TRUNNEL_NTORV3_EXT_TYPE_CC_RESPONSE:
+      ret = congestion_control_ntor3_parse_ext_response(field, params_out);
+      break;
+    default:
+      /* Fail on unknown extensions. */
+      ret = false;
+      break;
+    }
+
+    if (!ret) {
+      goto end;
+    }
+  }
+
+  /* Success. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
+}
 
 /** Return a new server_onion_keys_t object with all of the keys
  * and other info we might need to do onion handshakes.  (We make a copy of
@@ -177,8 +341,9 @@ onion_skin_create(int type,
       return -1;
     size_t msg_len = 0;
     uint8_t *msg = NULL;
-    if (client_circ_negotiation_message(node, &msg, &msg_len) < 0)
+    if (!client_circ_negotiation_message(node, &msg, &msg_len)) {
       return -1;
+    }
     uint8_t *onion_skin = NULL;
     size_t onion_skin_len = 0;
     int status = onion_skin_ntor3_create(
@@ -216,6 +381,87 @@ onion_skin_create(int type,
   return r;
 }
 
+/* Avoid code duplication into one convenient macro. */
+#define TRN_ADD_FIELD(ext, field) \
+  do { \
+    trn_extension_add_fields(ext, field); \
+    trn_extension_set_num(ext, trn_extension_get_num(ext) + 1); \
+  } while (0)
+
+/** Build the ntorv3 extension response server side.
+ *
+ * The ext_circ_params must be coherent and valid values that we are ready to
+ * send back. The values in this object are also used to know if we have to
+ * build the response or not.
+ *
+ * Return true on success and the resp_msg_out contains the encoded extension.
+ * On error, false and everything is untouched. */
+static bool
+build_ntor3_ext_response_server(const circuit_params_t *our_ns_params,
+                                const circuit_params_t *ext_circ_params,
+                                uint8_t **resp_msg_out,
+                                size_t *resp_msg_len_out)
+{
+  uint8_t *encoded = NULL;
+  trn_extension_field_t *response = NULL;
+  trn_extension_t *ext = trn_extension_new();
+
+  /* Build the congestion control response. */
+  if (ext_circ_params->cc_enabled) {
+    response = congestion_control_ntor3_build_ext_response(our_ns_params);
+    if (!response) {
+      goto err;
+    }
+    TRN_ADD_FIELD(ext, response);
+  }
+
+  /* Encode response extension. */
+  ssize_t encoded_len = trn_extension_encoded_len(ext);
+  if (BUG(encoded_len < 0)) {
+    goto err;
+  }
+  encoded = tor_malloc_zero(encoded_len);
+  if (BUG(trn_extension_encode(encoded, encoded_len, ext) < 0)) {
+    goto err;
+  }
+  *resp_msg_out = encoded;
+  *resp_msg_len_out = encoded_len;
+
+  trn_extension_free(ext);
+  return true;
+
+ err:
+  tor_free(encoded);
+  trn_extension_free(ext);
+  return false;
+}
+
+/** Return true iff the given circ_params are coherent and valid based on
+ * our_ns_params and global configuration.
+ *
+ * For congestion control, the cc_enabled can be flipped depending on what is
+ * enabled server side.
+ *
+ * This function runs in a worker thread, so it can only inspect
+ * arguments and local variables. */
+static bool
+validate_ntor3_params_server(const circuit_params_t *our_ns_params,
+                             circuit_params_t *circ_params)
+{
+  /* Validation is done through changing the value from what we can do server
+   * side. Essentially, is congestion control enabled on our end or not? */
+  circ_params->cc_enabled =
+      circ_params->cc_enabled && our_ns_params->cc_enabled;
+
+  /* If the circuit relay cell protocol version is higher than ours it means we
+   * don't support it so error. */
+  if (circ_params->subproto.relay_cell > our_ns_params->subproto.relay_cell) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Takes a param request message from the client, compares it to our
  * consensus parameters, and creates a reply message and output
@@ -235,29 +481,33 @@ negotiate_v3_ntor_server_circ_params(const uint8_t *param_request_msg,
                                      uint8_t **resp_msg_out,
                                      size_t *resp_msg_len_out)
 {
-  int ret;
-
-  /* Parse request. */
-  ret = congestion_control_parse_ext_request(param_request_msg,
-                                             param_request_len);
-  if (ret < 0) {
+  /* Failed to parse the extension. */
+  if (!parse_ntor3_server_ext(param_request_msg, param_request_len,
+                              params_out)) {
     goto err;
   }
-  params_out->cc_enabled = ret && our_ns_params->cc_enabled;
 
-  /* Build the response. */
-  ret = congestion_control_build_ext_response(our_ns_params, params_out,
-                                              resp_msg_out, resp_msg_len_out);
-  if (ret < 0) {
+  /* Passing validation means our params_out are now valid and coherent and
+   * thus can be safely used it in our response and configuration. */
+  if (!validate_ntor3_params_server(our_ns_params, params_out)) {
     goto err;
   }
+
+  /* Build the response extension if any. */
+  if (!build_ntor3_ext_response_server(our_ns_params, params_out,
+                                       resp_msg_out, resp_msg_len_out)) {
+    goto err;
+  }
+
+  /* At this point, the responses have been built and successfully encoded so
+   * we can set our sendme increment and start using it. */
   params_out->sendme_inc_cells = our_ns_params->sendme_inc_cells;
 
   /* Success. */
-  ret = 0;
+  return 0;
 
  err:
-  return ret;
+  return -1;
 }
 
 /* This is the maximum value for keys_out_len passed to
@@ -424,10 +674,8 @@ negotiate_v3_ntor_client_circ_params(const uint8_t *param_response_msg,
                                      size_t param_response_len,
                                      circuit_params_t *params_out)
 {
-  int ret = congestion_control_parse_ext_response(param_response_msg,
-                                                  param_response_len,
-                                                  params_out);
-  if (ret < 0) {
+  if (!parse_ntorv3_client_ext(param_response_msg, param_response_len,
+                               params_out)) {
     return -1;
   }
 
@@ -442,10 +690,9 @@ negotiate_v3_ntor_client_circ_params(const uint8_t *param_response_msg,
    * In either case, we cannot proceed on this circuit, and must try a
    * new one.
    */
-  if (ret && !congestion_control_enabled()) {
+  if (params_out->cc_enabled && !congestion_control_enabled()) {
     return -1;
   }
-  params_out->cc_enabled = ret;
 
   return 0;
 }
@@ -471,6 +718,12 @@ onion_skin_client_handshake(int type,
     return -1;
 
   memset(params_out, 0, sizeof(*params_out));
+
+  /* Put in the defaults. Some protover don't have server replies so if the
+   * handshake is successful, we need to set what we wanted. */
+  if (relay_msg_is_enabled()) {
+    params_out->subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  }
 
   switch (type) {
   case ONION_HANDSHAKE_TYPE_TAP:

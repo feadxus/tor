@@ -28,6 +28,7 @@
 #include "core/or/circuitlist.h"
 #include "core/or/extendinfo.h"
 #include "core/or/congestion_control_common.h"
+#include "core/or/relay_msg.h"
 
 #include "lib/crypt_ops/crypto_dh.h"
 #include "lib/crypt_ops/crypto_util.h"
@@ -70,6 +71,8 @@ cpath_append_hop(crypt_path_t **head_ptr, extend_info_t *choice)
 
   hop->package_window = circuit_initial_package_window();
   hop->deliver_window = CIRCWINDOW_START;
+  /* Default to version 0 until negotiation. */
+  relay_msg_codec_init(&hop->relay_msg_codec, 0);
 
   return 0;
 }
@@ -167,6 +170,7 @@ cpath_free(crypt_path_t *victim)
   crypto_dh_free(victim->rend_dh_handshake_state);
   extend_info_free(victim->extend_info);
   congestion_control_free(victim->ccontrol);
+  relay_msg_codec_clear(&victim->relay_msg_codec);
 
   memwipe(victim, 0xBB, sizeof(crypt_path_t)); /* poison memory */
   tor_free(victim);
@@ -191,14 +195,6 @@ struct crypto_digest_t *
 cpath_get_incoming_digest(const crypt_path_t *cpath)
 {
   return cpath->pvt_crypto.b_digest;
-}
-
-/** Set the right integrity digest on the outgoing <b>cell</b> based on the
- *  cell payload and update the forward digest of <b>cpath</b>. */
-void
-cpath_set_cell_forward_digest(crypt_path_t *cpath, cell_t *cell)
-{
-  relay_set_digest(cpath->pvt_crypto.f_digest, cell);
 }
 
 /************ cpath sendme API ***************************/

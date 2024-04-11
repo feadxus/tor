@@ -495,6 +495,14 @@ memoize_protover_summary(protover_summary_flags_t *out,
     protocol_list_supports_protocol(protocols, PRT_CONFLUX,
                                     PROTOVER_CONFLUX_V1);
 
+  out->supports_ntorv3_subproto =
+    protocol_list_supports_protocol(protocols, PRT_RELAY,
+                                    PROTOVER_RELAY_NTORV3_SUBPROTO);
+
+  out->supports_relay_cell_proto =
+    protocol_list_supports_protocol(protocols, PRT_RELAY_CELL,
+                                    PROTOVER_RELAY_CELL_PROTO);
+
   protover_summary_flags_t *new_cached = tor_memdup(out, sizeof(*out));
   cached = strmap_set(protover_summary_map, protocols, new_cached);
   tor_assert(!cached);

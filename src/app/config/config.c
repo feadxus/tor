@@ -692,6 +692,7 @@ static const config_var_t option_vars_[] = {
   V(VanguardsLiteEnabled,        AUTOBOOL, "auto"),
   V(UseMicrodescriptors,         AUTOBOOL, "auto"),
   OBSOLETE("UseNTorHandshake"),
+  V(UseRelayMessage,             AUTOBOOL, "auto"),
   VAR("__AlwaysCongestionControl",  BOOL, AlwaysCongestionControl, "0"),
   VAR("__SbwsExit",  BOOL, SbwsExit, "0"),
   V_IMMUTABLE(User,              STRING,   NULL),

@@ -23,10 +23,14 @@
 
 #define PROTOVER_PRIVATE
 
-#include "core/or/or.h"
+#include "core/or/congestion_control_common.h"
+#include "core/or/extend_info_st.h"
 #include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #include "core/or/versions.h"
 #include "lib/tls/tortls.h"
+
+#include "trunnel/ntorv3.h"
 
 static const smartlist_t *get_supported_protocol_list(void);
 static int protocol_list_contains(const smartlist_t *protos,
@@ -56,6 +60,7 @@ static const struct {
   { PRT_CONS, "Cons" },
   { PRT_FLOWCTRL, "FlowCtrl"},
   { PRT_CONFLUX, "Conflux"},
+  { PRT_RELAY_CELL, "RelayCell"},
 };
 
 #define N_PROTOCOL_NAMES ARRAY_LENGTH(PROTOCOL_NAMES)
@@ -403,7 +408,8 @@ protocol_list_supports_protocol_or_later(const char *list,
 #endif
 #define PR_MICRODESC_V "1-2"
 #define PR_PADDING_V   "2"
-#define PR_RELAY_V     "1-4"
+#define PR_RELAY_V     "1-5"
+#define PR_RELAY_CELL_V "1"
 
 /** Return the string containing the supported version for the given protocol
  * type. */
@@ -424,6 +430,7 @@ protover_get_supported(const protocol_type_t type)
   case PRT_MICRODESC: return PR_MICRODESC_V;
   case PRT_PADDING: return PR_PADDING_V;
   case PRT_RELAY: return PR_RELAY_V;
+  case PRT_RELAY_CELL: return PR_RELAY_CELL_V;
   default:
     tor_assert_unreached();
   }
@@ -486,7 +493,8 @@ protover_get_supported_protocols(void)
     "LinkAuth=" PR_LINKAUTH_V " "
     "Microdesc=" PR_MICRODESC_V " "
     "Padding=" PR_PADDING_V " "
-    "Relay=" PR_RELAY_V;
+    "Relay=" PR_RELAY_V " "
+    "RelayCell=" PR_RELAY_CELL_V;
 }
 
 /*
@@ -892,4 +900,64 @@ protover_free_all(void)
     smartlist_free(entries);
     supported_protocol_list = NULL;
   }
+}
+
+/** Build a ntorv3 subprotocol extension request for the given hop.
+ *
+ * On success, return the extension encoded as a field else NULL. */
+trn_extension_field_t *
+protover_build_ntor3_ext_request(const extend_info_t *ei)
+{
+  ssize_t ret;
+  trn_extension_field_t *field = NULL;
+  trn_ntorv3_ext_subproto_t *req = NULL;
+
+  field = trn_extension_field_new();
+  trn_extension_field_set_field_type(field,
+                                     TRUNNEL_NTORV3_EXT_TYPE_SUBPROTO_REQ);
+
+  req = trn_ntorv3_ext_subproto_new();
+
+  /* Build the FlowCtrl version request. */
+  if (congestion_control_enabled() && ei->supports_ntorv3_subproto_req) {
+    trn_ntorv3_ext_subproto_req_t *proto_req =
+      trn_ntorv3_ext_subproto_req_new();
+    trn_ntorv3_ext_subproto_req_set_proto_id(proto_req, PRT_FLOWCTRL);
+    trn_ntorv3_ext_subproto_req_set_proto_version(proto_req,
+                                                  PROTOVER_FLOWCTRL_CC);
+    trn_ntorv3_ext_subproto_add_reqs(req, proto_req);
+  }
+  /* Build the RelayCell version request. */
+  if (relay_msg_is_enabled() && ei->supports_relay_cell_proto) {
+    trn_ntorv3_ext_subproto_req_t *proto_req =
+      trn_ntorv3_ext_subproto_req_new();
+    trn_ntorv3_ext_subproto_req_set_proto_id(proto_req, PRT_RELAY_CELL);
+    trn_ntorv3_ext_subproto_req_set_proto_version(proto_req,
+                                                  PROTOVER_RELAY_CELL_PROTO);
+    trn_ntorv3_ext_subproto_add_reqs(req, proto_req);
+  }
+
+  /* Encoding into an extension field. */
+  ret = trn_ntorv3_ext_subproto_encoded_len(req);
+  if (BUG(ret < 0)) {
+    trn_extension_field_free(field);
+    field = NULL;
+    goto err;
+  }
+  size_t field_len = ret;
+  trn_extension_field_set_field_len(field, field_len);
+  trn_extension_field_setlen_field(field, field_len);
+
+  uint8_t *field_array = trn_extension_field_getarray_field(field);
+  ret = trn_ntorv3_ext_subproto_encode(field_array,
+            trn_extension_field_getlen_field(field), req);
+  if (BUG(ret < 0)) {
+    trn_extension_field_free(field);
+    field = NULL;
+    goto err;
+  }
+
+ err:
+  trn_ntorv3_ext_subproto_free(req);
+  return field;
 }

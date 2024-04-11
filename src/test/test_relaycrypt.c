@@ -11,6 +11,7 @@
 #include "core/or/circuitlist.h"
 #include "lib/crypt_ops/crypto_rand.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/crypto/relay_crypto.h"
 #include "core/or/crypt_path.h"
 #include "core/or/cell_st.h"
@@ -54,6 +55,7 @@ testing_circuitset_setup(const struct testcase_t *testcase)
     relay_crypto_init(&hop->pvt_crypto, KEY_MATERIAL[i],
                       sizeof(KEY_MATERIAL[i]), 0, 0);
     hop->state = CPATH_STATE_OPEN;
+    relay_msg_codec_init(&hop->relay_msg_codec, 0);
     cpath_extend_linked_list(&cs->origin_circ->cpath, hop);
     tt_ptr_op(hop, OP_EQ, cs->origin_circ->cpath->prev);
   }
@@ -98,6 +100,7 @@ test_relaycrypt_outbound(void *arg)
 
   for (i = 0; i < 50; ++i) {
     crypto_rand((char *)&orig, sizeof(orig));
+    orig.relay_cell_proto = 0;
 
     relay_header_unpack(&rh, orig.payload);
     rh.recognized = 0;
@@ -143,6 +146,7 @@ test_relaycrypt_inbound(void *arg)
 
   for (i = 0; i < 50; ++i) {
     crypto_rand((char *)&orig, sizeof(orig));
+    orig.relay_cell_proto = 0;
 
     relay_header_unpack(&rh, orig.payload);
     rh.recognized = 0;

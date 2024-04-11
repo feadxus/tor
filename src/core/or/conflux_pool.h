@@ -10,6 +10,7 @@
 #define TOR_CONFLUX_POOL_H
 
 #include "core/or/or.h"
+#include "core/or/relay_msg_st.h"
 
 void conflux_pool_init(void);
 void conflux_notify_shutdown(void);
@@ -31,10 +32,9 @@ void conflux_circuit_has_closed(circuit_t *circ);
 void conflux_circuit_has_opened(origin_circuit_t *orig_circ);
 void conflux_circuit_about_to_free(circuit_t *circ);
 
-void conflux_process_link(circuit_t *circ, const cell_t *cell,
-                          const uint16_t cell_len);
+void conflux_process_link(circuit_t *circ, const relay_msg_t *msg);
 void conflux_process_linked(circuit_t *circ, crypt_path_t *layer_hint,
-                            const cell_t *cell, const uint16_t cell_len);
+                            const relay_msg_t *msg);
 void conflux_process_linked_ack(circuit_t *circ);
 
 typedef struct conflux_t conflux_t;

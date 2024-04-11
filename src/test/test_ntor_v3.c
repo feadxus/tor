@@ -13,6 +13,8 @@
 #include "core/crypto/onion_crypto.h"
 #include "core/or/extend_info_st.h"
 #include "core/or/crypt_path_st.h"
+#include "core/or/protover.h"
+#include "core/or/relay_msg.h"
 #define TOR_CONGESTION_CONTROL_PRIVATE
 #define TOR_CONGESTION_CONTROL_COMMON_PRIVATE
 #include "core/or/congestion_control_st.h"
@@ -174,7 +176,11 @@ test_ntor3_testvecs(void *arg)
   dimap_free(private_keys, NULL);
 }
 
-static void
+/** Perform a full ntorv3 handshake.
+ *
+ * Return 0 on success, -1 if onionskin failed to be created, -2 if the server
+ * handshake failed and -3 if the client handshake failed. */
+static int
 run_full_handshake(circuit_params_t *serv_params_in,
                    circuit_params_t *client_params_out,
                    circuit_params_t *serv_params_out)
@@ -182,7 +188,7 @@ run_full_handshake(circuit_params_t *serv_params_in,
   extend_info_t info = {0};
   uint8_t onionskin[CELL_PAYLOAD_SIZE];
   int onionskin_len = 0;
-  int reply_len = 0;
+  int reply_len = 0, ret;
   onion_handshake_state_t handshake_state = {0};
   server_onion_keys_t server_keys = {0};
   curve25519_keypair_t relay_onion_key;
@@ -192,7 +198,13 @@ run_full_handshake(circuit_params_t *serv_params_in,
   uint8_t client_keys[CELL_PAYLOAD_SIZE];
   uint8_t rend_auth[DIGEST_LEN];
 
-  info.exit_supports_congestion_control = 1;
+  if (serv_params_in->subproto.flow_ctrl != 0) {
+    info.supports_ntorv3_subproto_req = 1;
+  } else {
+    info.exit_supports_congestion_control = 1;
+  }
+
+  info.supports_relay_cell_proto = 1;
 
   unhex(relay_onion_key.seckey.secret_key,
         "4051daa5921cfa2a1c27b08451324919538e79e788a81b38cbed097a5dff454a");
@@ -214,7 +226,10 @@ run_full_handshake(circuit_params_t *serv_params_in,
   onionskin_len = onion_skin_create(ONION_HANDSHAKE_TYPE_NTOR_V3, &info,
                     &handshake_state, onionskin,
                     sizeof(onionskin));
-  tt_int_op(onionskin_len, OP_NE, -1);
+  if (onionskin_len <= 0) {
+    ret = -1;
+    goto err;
+  }
 
   server_keys.junk_keypair = &handshake_state.u.ntor3->client_keypair;
 
@@ -224,20 +239,30 @@ run_full_handshake(circuit_params_t *serv_params_in,
                               serv_reply, sizeof(serv_reply),
                               serv_keys, sizeof(serv_keys),
                               rend_nonce, serv_params_out);
-  tt_int_op(reply_len, OP_NE, -1);
+  if (reply_len <= 0) {
+    ret = -2;
+    goto err;
+  }
 
-  tt_int_op(onion_skin_client_handshake(ONION_HANDSHAKE_TYPE_NTOR_V3,
-                              &handshake_state,
-                              serv_reply, reply_len,
-                              client_keys, sizeof(client_keys),
-                              rend_auth, client_params_out,
-                              NULL), OP_EQ, 0);
+  ret = onion_skin_client_handshake(ONION_HANDSHAKE_TYPE_NTOR_V3,
+                                    &handshake_state,
+                                    serv_reply, reply_len,
+                                    client_keys, sizeof(client_keys),
+                                    rend_auth, client_params_out,
+                                    NULL);
+  if (ret < 0) {
+    ret = -3;
+    goto err;
+  }
 
  done:
+  ret = 0;
+
+ err:
   dimap_free(server_keys.curve25519_key_map, NULL);
   ntor3_handshake_state_free(handshake_state.u.ntor3);
 
-  return;
+  return ret;
 }
 
 /**
@@ -252,48 +277,58 @@ run_full_handshake(circuit_params_t *serv_params_in,
 static void
 test_ntor3_handshake(void *arg)
 {
-  (void)arg;
+  int ret;
   circuit_params_t client_params, serv_params, serv_ns_params;
 
+  (void) arg;
+
+  /* Support at least 5. */
+  serv_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
   serv_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
 
   /* client off, serv off -> off */
   serv_ns_params.cc_enabled = 0;
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 0);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 0);
 
   /* client off, serv on -> off */
   congestion_control_set_cc_disabled();
   serv_ns_params.cc_enabled = 1;
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 0);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 0);
 
   /* client off + param, serv on -> on */
   serv_ns_params.cc_enabled = 1;
   get_options_mutable()->AlwaysCongestionControl = 1;
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 1);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 1);
 
   /* client on, serv off -> off */
   serv_ns_params.cc_enabled = 0;
   congestion_control_set_cc_enabled();
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 0);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 0);
 
   /* client on, serv on -> on */
   serv_ns_params.cc_enabled = 1;
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 1);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 1);
 
   /* client on, serv on, sendme_inc diff -> serv sendme_inc */
   serv_ns_params.cc_enabled = 1;
   serv_ns_params.sendme_inc_cells += 1;
-  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
   tt_int_op(client_params.cc_enabled, OP_EQ, 1);
   tt_int_op(serv_params.cc_enabled, OP_EQ, 1);
   tt_int_op(serv_params.sendme_inc_cells, OP_EQ,
@@ -303,12 +338,61 @@ test_ntor3_handshake(void *arg)
   tt_int_op(client_params.sendme_inc_cells, OP_NE,
             congestion_control_sendme_inc());
 
+  /* client on, serv on, sendme_inc -> serv sendme_inc. Using subproto
+   * extension. */
+  serv_ns_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
+  serv_ns_params.cc_enabled = 1;
+  serv_ns_params.sendme_inc_cells = congestion_control_sendme_inc();
+  run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(client_params.cc_enabled, OP_EQ, 1);
+  tt_int_op(serv_params.cc_enabled, OP_EQ, 1);
+  tt_int_op(serv_params.sendme_inc_cells, OP_EQ,
+            client_params.sendme_inc_cells);
+  tt_int_op(client_params.sendme_inc_cells, OP_EQ,
+            serv_ns_params.sendme_inc_cells);
+
+  /*
+   * Relay cell protocol extension (RelayCell=1).
+   */
+
+  /* NOTE: Our ntorv3 code uses what our current "tor binary" supports which
+   * means that it can be N today but will be N + 1 in 6 months. And so, the
+   * checks on "proto_relay_version" are always OP_GE for that reason. */
+
+  serv_ns_params.subproto.relay_cell = PROTOVER_RELAY_CELL_PROTO;
+  serv_ns_params.subproto.flow_ctrl = PROTOVER_FLOWCTRL_CC;
+
+  /* First test with relay messages disabled. */
+  get_options_mutable()->UseRelayMessage = 0;
+  /* This will update the global paramaters also using the config. */
+  relay_msg_consensus_has_changed(NULL);
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
+  tt_int_op(client_params.subproto.relay_cell, OP_GE, 0);
+  tt_int_op(serv_params.subproto.relay_cell, OP_GE, 0);
+
+  /* Now, enable it and check negotiation. */
+  get_options_mutable()->UseRelayMessage = 1;
+  relay_msg_consensus_has_changed(NULL);
+
+  /* client 1, serv 0 -> err */
+  serv_ns_params.subproto.relay_cell = 0;
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  /* Server side error. */
+  tt_int_op(ret, OP_EQ, -2);
+
+  /* client 1, serv 1 -> success. */
+  serv_ns_params.subproto.relay_cell = 1;
+  ret = run_full_handshake(&serv_ns_params, &client_params, &serv_params);
+  tt_int_op(ret, OP_EQ, 0);
+  tt_int_op(serv_params.subproto.relay_cell, OP_GE, 1);
+
  done:
   return;
 }
 
 struct testcase_t ntor_v3_tests[] = {
   { "testvecs", test_ntor3_testvecs, 0, NULL, NULL, },
-  { "handshake_negtotiation", test_ntor3_handshake, 0, NULL, NULL, },
+  { "handshake_negotiation", test_ntor3_handshake, 0, NULL, NULL, },
   END_OF_TESTCASES,
 };

@@ -30,6 +30,7 @@
 #include "core/or/connection_or.h"
 #include "core/or/crypt_path.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 
 #include "feature/nodelist/nodelist.h"
 #include "feature/nodelist/routerlist.h"
@@ -569,3 +570,27 @@ new_test_origin_circuit(bool has_opened,
 
   return origin_circ;
 }
+
+void
+helper_relay_msg_garbage(relay_msg_t *msg, uint8_t garbage)
+{
+  relay_msg_clear(msg);
+  memset(msg, garbage, sizeof(*msg));
+  msg->length = 100;
+  msg->body = tor_malloc_zero(msg->length);
+  memset(msg->body, garbage, msg->length);
+}
+
+relay_msg_t *
+helper_relay_msg_from_cell(cell_t *cell)
+{
+  relay_msg_codec_t codec;
+  relay_msg_codec_init(&codec, cell->relay_cell_proto);
+  relay_msg_decode_cell(&codec, cell);
+  smartlist_t *msgs = relay_msg_take_ready_msgs(&codec);
+  relay_msg_t *msg = smartlist_get(msgs, 0);
+  smartlist_free(msgs);
+  relay_msg_codec_clear(&codec);
+  return msg;
+}
+

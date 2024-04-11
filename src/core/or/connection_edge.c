@@ -3816,33 +3816,27 @@ connection_ap_handshake_socks_reply(entry_connection_t *conn, char *reply,
  * we don't.
  **/
 STATIC int
-begin_cell_parse(const cell_t *cell, begin_cell_t *bcell,
+begin_cell_parse(const relay_msg_t *msg, begin_cell_t *bcell,
                  uint8_t *end_reason_out)
 {
-  relay_header_t rh;
   const uint8_t *body, *nul;
 
   memset(bcell, 0, sizeof(*bcell));
   *end_reason_out = END_STREAM_REASON_MISC;
 
-  relay_header_unpack(&rh, cell->payload);
-  if (rh.length > RELAY_PAYLOAD_SIZE) {
-    return -2; /*XXXX why not TORPROTOCOL? */
-  }
+  bcell->stream_id = msg->stream_id;
 
-  bcell->stream_id = rh.stream_id;
-
-  if (rh.command == RELAY_COMMAND_BEGIN_DIR) {
+  if (msg->command == RELAY_COMMAND_BEGIN_DIR) {
     bcell->is_begindir = 1;
     return 0;
-  } else if (rh.command != RELAY_COMMAND_BEGIN) {
-    log_warn(LD_BUG, "Got an unexpected command %d", (int)rh.command);
+  } else if (msg->command != RELAY_COMMAND_BEGIN) {
+    log_warn(LD_BUG, "Got an unexpected command %u", msg->command);
     *end_reason_out = END_STREAM_REASON_INTERNAL;
     return -1;
   }
 
-  body = cell->payload + RELAY_HEADER_SIZE;
-  nul = memchr(body, 0, rh.length);
+  body = msg->body;
+  nul = memchr(body, 0, msg->length);
   if (! nul) {
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
            "Relay begin cell has no \\0. Closing.");
@@ -3865,7 +3859,7 @@ begin_cell_parse(const cell_t *cell, begin_cell_t *bcell,
     *end_reason_out = END_STREAM_REASON_TORPROTOCOL;
     return -1;
   }
-  if (body + rh.length >= nul + 4)
+  if (body + msg->length >= nul + 4)
     bcell->flags = ntohl(get_uint32(nul+1));
 
   return 0;
@@ -3978,10 +3972,9 @@ handle_hs_exit_conn(circuit_t *circ, edge_connection_t *conn)
  * Else return 0.
  */
 int
-connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
+connection_exit_begin_conn(const relay_msg_t *msg, circuit_t *circ)
 {
   edge_connection_t *n_stream;
-  relay_header_t rh;
   char *address = NULL;
   uint16_t port = 0;
   or_circuit_t *or_circ = NULL;
@@ -4002,25 +3995,22 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
     layer_hint = origin_circ->cpath->prev;
   }
 
-  relay_header_unpack(&rh, cell->payload);
-  if (rh.length > RELAY_PAYLOAD_SIZE)
-    return -END_CIRC_REASON_TORPROTOCOL;
-
   if (!server_mode(options) &&
       circ->purpose != CIRCUIT_PURPOSE_S_REND_JOINED) {
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
            "Relay begin cell at non-server. Closing.");
-    relay_send_end_cell_from_edge(rh.stream_id, circ,
+    relay_send_end_cell_from_edge(msg->stream_id, circ,
                                   END_STREAM_REASON_EXITPOLICY, NULL);
     return 0;
   }
 
-  rv = begin_cell_parse(cell, &bcell, &end_reason);
+  rv = begin_cell_parse(msg, &bcell, &end_reason);
   if (rv < -1) {
     return -END_CIRC_REASON_TORPROTOCOL;
   } else if (rv == -1) {
     tor_free(bcell.address);
-    relay_send_end_cell_from_edge(rh.stream_id, circ, end_reason, layer_hint);
+    relay_send_end_cell_from_edge(msg->stream_id, circ, end_reason,
+                                  layer_hint);
     return 0;
   }
 
@@ -4044,7 +4034,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
                safe_str(channel_describe_peer(or_circ->p_chan)),
                client_chan ? "on first hop of circuit" :
                              "from unknown relay");
-        relay_send_end_cell_from_edge(rh.stream_id, circ,
+        relay_send_end_cell_from_edge(msg->stream_id, circ,
                                       client_chan ?
                                         END_STREAM_REASON_TORPROTOCOL :
                                         END_STREAM_REASON_MISC,
@@ -4053,11 +4043,12 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
         return 0;
       }
     }
-  } else if (rh.command == RELAY_COMMAND_BEGIN_DIR) {
+  } else if (msg->command == RELAY_COMMAND_BEGIN_DIR) {
     if (!directory_permits_begindir_requests(options) ||
         circ->purpose != CIRCUIT_PURPOSE_OR) {
-      relay_send_end_cell_from_edge(rh.stream_id, circ,
-                                  END_STREAM_REASON_NOTDIRECTORY, layer_hint);
+      relay_send_end_cell_from_edge(msg->stream_id, circ,
+                                    END_STREAM_REASON_NOTDIRECTORY,
+                                    layer_hint);
       return 0;
     }
     /* Make sure to get the 'real' address of the previous hop: the
@@ -4075,8 +4066,8 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
                * isn't "really" a connection here.  But we
                * need to set it to something nonzero. */
   } else {
-    log_warn(LD_BUG, "Got an unexpected command %d", (int)rh.command);
-    relay_send_end_cell_from_edge(rh.stream_id, circ,
+    log_warn(LD_BUG, "Got an unexpected command %u", msg->command);
+    relay_send_end_cell_from_edge(msg->stream_id, circ,
                                   END_STREAM_REASON_INTERNAL, layer_hint);
     return 0;
   }
@@ -4087,7 +4078,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
     /* If you don't want IPv4, I can't help. */
     if (bcell.flags & BEGIN_FLAG_IPV4_NOT_OK) {
       tor_free(address);
-      relay_send_end_cell_from_edge(rh.stream_id, circ,
+      relay_send_end_cell_from_edge(msg->stream_id, circ,
                                     END_STREAM_REASON_EXITPOLICY, layer_hint);
       return 0;
     }
@@ -4104,7 +4095,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
 
   n_stream->base_.purpose = EXIT_PURPOSE_CONNECT;
   n_stream->begincell_flags = bcell.flags;
-  n_stream->stream_id = rh.stream_id;
+  n_stream->stream_id = msg->stream_id;
   n_stream->base_.port = port;
   /* leave n_stream->s at -1, because it's not yet valid */
   n_stream->package_window = STREAMWINDOW_START;
@@ -4119,7 +4110,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
 
     if (ret == 0) {
       /* This was a valid cell. Count it as delivered + overhead. */
-      circuit_read_valid_data(origin_circ, rh.length);
+      circuit_read_valid_data(origin_circ, msg->length);
     }
     return ret;
   }
@@ -4130,7 +4121,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
 
   /* If we're hibernating or shutting down, we refuse to open new streams. */
   if (we_are_hibernating()) {
-    relay_send_end_cell_from_edge(rh.stream_id, circ,
+    relay_send_end_cell_from_edge(msg->stream_id, circ,
                                   END_STREAM_REASON_HIBERNATING, NULL);
     connection_free_(TO_CONN(n_stream));
     return 0;
@@ -4138,7 +4129,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
 
   n_stream->on_circuit = circ;
 
-  if (rh.command == RELAY_COMMAND_BEGIN_DIR) {
+  if (msg->command == RELAY_COMMAND_BEGIN_DIR) {
     tor_addr_t tmp_addr;
     tor_assert(or_circ);
     if (or_circ->p_chan &&
@@ -4159,8 +4150,8 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
     case DOS_STREAM_DEFENSE_REFUSE_STREAM:
       // we don't use END_STREAM_REASON_RESOURCELIMIT because it would make a
       // client mark us as non-functional until they get a new consensus.
-      relay_send_end_cell_from_edge(rh.stream_id, circ, END_STREAM_REASON_MISC,
-                                    layer_hint);
+      relay_send_end_cell_from_edge(msg->stream_id, circ,
+                                    END_STREAM_REASON_MISC, layer_hint);
       connection_free_(TO_CONN(n_stream));
       return 0;
     case DOS_STREAM_DEFENSE_CLOSE_CIRCUIT:
@@ -4176,7 +4167,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
       connection_exit_connect(n_stream);
       return 0;
     case -1: /* resolve failed */
-      relay_send_end_cell_from_edge(rh.stream_id, circ,
+      relay_send_end_cell_from_edge(msg->stream_id, circ,
                                     END_STREAM_REASON_RESOLVEFAILED, NULL);
       /* n_stream got freed. don't touch it. */
       break;
@@ -4196,16 +4187,12 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
  * Else return 0.
  */
 int
-connection_exit_begin_resolve(cell_t *cell, or_circuit_t *circ)
+connection_exit_begin_resolve(const relay_msg_t *msg, or_circuit_t *circ)
 {
   edge_connection_t *dummy_conn;
-  relay_header_t rh;
   dos_stream_defense_type_t dos_defense_type;
 
   assert_circuit_ok(TO_CIRCUIT(circ));
-  relay_header_unpack(&rh, cell->payload);
-  if (rh.length > RELAY_PAYLOAD_SIZE)
-    return 0;
 
   /* Note the RESOLVE stream as seen. */
   rep_hist_note_exit_stream(RELAY_COMMAND_RESOLVE);
@@ -4218,10 +4205,8 @@ connection_exit_begin_resolve(cell_t *cell, or_circuit_t *circ)
    * the housekeeping in dns.c would get way more complicated.)
    */
   dummy_conn = edge_connection_new(CONN_TYPE_EXIT, AF_INET);
-  dummy_conn->stream_id = rh.stream_id;
-  dummy_conn->base_.address = tor_strndup(
-                                       (char*)cell->payload+RELAY_HEADER_SIZE,
-                                       rh.length);
+  dummy_conn->stream_id = msg->stream_id;
+  dummy_conn->base_.address = tor_strndup((char *) msg->body, msg->length);
   dummy_conn->base_.port = 0;
   dummy_conn->base_.state = EXIT_CONN_STATE_RESOLVEFAILED;
   dummy_conn->base_.purpose = EXIT_PURPOSE_RESOLVE;

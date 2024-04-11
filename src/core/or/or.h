@@ -222,6 +222,53 @@ struct curve25519_public_key_t;
 #define RELAY_COMMAND_XOFF 43
 #define RELAY_COMMAND_XON 44
 
+/* NOTE: Any new command from above MUST be added to this function. */
+
+/** Helper to learn if we know the relay command. Unfortuantely, they are not
+ * contigous and so we need this kind of big switch. We could do better but for
+ * now, we'll run with this. */
+static inline bool
+is_known_relay_command(const uint8_t cmd)
+{
+  switch (cmd) {
+  case RELAY_COMMAND_BEGIN:
+  case RELAY_COMMAND_BEGIN_DIR:
+  case RELAY_COMMAND_CONFLUX_LINK:
+  case RELAY_COMMAND_CONFLUX_LINKED:
+  case RELAY_COMMAND_CONFLUX_LINKED_ACK:
+  case RELAY_COMMAND_CONFLUX_SWITCH:
+  case RELAY_COMMAND_CONNECTED:
+  case RELAY_COMMAND_DATA:
+  case RELAY_COMMAND_DROP :
+  case RELAY_COMMAND_END:
+  case RELAY_COMMAND_ESTABLISH_INTRO:
+  case RELAY_COMMAND_ESTABLISH_RENDEZVOUS:
+  case RELAY_COMMAND_EXTEND2:
+  case RELAY_COMMAND_EXTEND:
+  case RELAY_COMMAND_EXTENDED2:
+  case RELAY_COMMAND_EXTENDED:
+  case RELAY_COMMAND_INTRODUCE1:
+  case RELAY_COMMAND_INTRODUCE2:
+  case RELAY_COMMAND_INTRODUCE_ACK:
+  case RELAY_COMMAND_INTRO_ESTABLISHED:
+  case RELAY_COMMAND_PADDING_NEGOTIATE:
+  case RELAY_COMMAND_PADDING_NEGOTIATED:
+  case RELAY_COMMAND_RENDEZVOUS1:
+  case RELAY_COMMAND_RENDEZVOUS2:
+  case RELAY_COMMAND_RENDEZVOUS_ESTABLISHED:
+  case RELAY_COMMAND_RESOLVE:
+  case RELAY_COMMAND_RESOLVED:
+  case RELAY_COMMAND_SENDME:
+  case RELAY_COMMAND_TRUNCATE:
+  case RELAY_COMMAND_TRUNCATED:
+  case RELAY_COMMAND_XOFF:
+  case RELAY_COMMAND_XON:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /* Reasons why an OR connection is closed. */
 #define END_OR_CONN_REASON_DONE           1
 #define END_OR_CONN_REASON_REFUSED        2 /* connection refused */
@@ -741,8 +788,15 @@ typedef struct protover_summary_flags_t {
    * Requires both FlowCtrl=2 *and* Relay=4 */
   unsigned int supports_congestion_control : 1;
 
-  /** True iff this router supports conflux. Requires Relay=5 */
+  /** True iff this router supports conflux. */
   unsigned int supports_conflux : 1;
+
+  /** True iff this router supports ntorv3 subproto request extension. Requires
+   * Relay=5. */
+  unsigned int supports_ntorv3_subproto : 1;
+
+  /** True iff this router supports the RelayCell=1 protocol. */
+  unsigned int supports_relay_cell_proto : 1;
 } protover_summary_flags_t;
 
 typedef struct routerinfo_t routerinfo_t;

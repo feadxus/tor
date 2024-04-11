@@ -64,6 +64,11 @@ extend_info_new(const char *nickname,
       pv->supports_congestion_control;
   }
 
+  if (pv) {
+    info->supports_relay_cell_proto = pv->supports_relay_cell_proto;
+    info->supports_ntorv3_subproto_req = pv->supports_ntorv3_subproto;
+  }
+
   return info;
 }
 
@@ -229,7 +234,7 @@ extend_info_supports_ntor_v3(const extend_info_t *ei)
 {
   tor_assert(ei);
   return extend_info_supports_ntor(ei) &&
-    ei->exit_supports_congestion_control;
+    (ei->exit_supports_congestion_control || ei->supports_ntorv3_subproto_req);
 }
 
 /* Does ei have an onion key which it would prefer to use?

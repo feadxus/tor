@@ -9,9 +9,13 @@
 #ifndef TOR_PROTOVER_H
 #define TOR_PROTOVER_H
 
+#include "core/or/or.h"
 #include <stdbool.h>
 #include "lib/cc/torint.h"
 #include "lib/testsupport/testsupport.h"
+
+#include "trunnel/extension.h"
+
 struct smartlist_t;
 
 /** The first version of Tor that included "proto" entries in its
@@ -58,23 +62,30 @@ struct smartlist_t;
 /** The protover that signals support for congestion control */
 #define PROTOVER_FLOWCTRL_CC 2
 
+/** The protover that signals support for ntorv3 subprotocol request. */
+#define PROTOVER_RELAY_NTORV3_SUBPROTO 5
+
+/** The protover that signals support for relay cell protocol. */
+#define PROTOVER_RELAY_CELL_PROTO 1
+
 /** List of recognized subprotocols. */
 /// C_RUST_COUPLED: src/rust/protover/ffi.rs `translate_to_rust`
 /// C_RUST_COUPLED: src/rust/protover/protover.rs `Proto`
 typedef enum protocol_type_t {
-  PRT_LINK      = 0,
-  PRT_LINKAUTH  = 1,
-  PRT_RELAY     = 2,
-  PRT_DIRCACHE  = 3,
-  PRT_HSDIR     = 4,
-  PRT_HSINTRO   = 5,
-  PRT_HSREND    = 6,
-  PRT_DESC      = 7,
-  PRT_MICRODESC = 8,
-  PRT_CONS      = 9,
-  PRT_PADDING   = 10,
-  PRT_FLOWCTRL  = 11,
-  PRT_CONFLUX   = 12,
+  PRT_LINK       = 0,
+  PRT_LINKAUTH   = 1,
+  PRT_RELAY      = 2,
+  PRT_DIRCACHE   = 3,
+  PRT_HSDIR      = 4,
+  PRT_HSINTRO    = 5,
+  PRT_HSREND     = 6,
+  PRT_DESC       = 7,
+  PRT_MICRODESC  = 8,
+  PRT_CONS       = 9,
+  PRT_PADDING    = 10,
+  PRT_FLOWCTRL   = 11,
+  PRT_CONFLUX    = 12,
+  PRT_RELAY_CELL = 13,
 } protocol_type_t;
 
 bool protover_list_is_invalid(const char *s);
@@ -97,6 +108,9 @@ int protocol_list_supports_protocol_or_later(const char *list,
                                              uint32_t version);
 
 void protover_free_all(void);
+
+trn_extension_field_t *protover_build_ntor3_ext_request(
+                                            const extend_info_t *ei);
 
 #ifdef PROTOVER_PRIVATE
 /** Represents a set of ranges of subprotocols of a given type. */

@@ -13,6 +13,7 @@
 #define CRYPT_PATH_ST_H
 
 #include "core/or/relay_crypto_st.h"
+#include "core/or/relay_msg_st.h"
 struct crypto_dh_t;
 
 #define CRYPT_PATH_MAGIC 0x70127012u
@@ -87,6 +88,10 @@ struct crypt_path_t {
 
   /** Congestion control info */
   struct congestion_control_t *ccontrol;
+
+  /** Relay message codec. This is initialize after each successful ntorv3
+   * handshake client side. */
+  relay_msg_codec_t relay_msg_codec;
 
   /*********************** Private members ****************************/
 

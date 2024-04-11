@@ -21,6 +21,7 @@
 #include "core/or/circuitlist.h"
 #include "core/or/circuituse.h"
 #include "core/or/onion.h"
+#include "core/or/relay_msg.h"
 
 #include "core/or/cell_st.h"
 #include "core/or/cpath_build_state_st.h"
@@ -1278,7 +1279,7 @@ static void
 test_circuit_extend(void *arg)
 {
   (void)arg;
-  cell_t *cell = tor_malloc_zero(sizeof(cell_t));
+  relay_msg_t msg;
   channel_t *p_chan = tor_malloc_zero(sizeof(channel_t));
   or_circuit_t *or_circ = tor_malloc_zero(sizeof(or_circuit_t));
   circuit_t *circ = TO_CIRCUIT(or_circ);
@@ -1293,10 +1294,13 @@ test_circuit_extend(void *arg)
 
   setup_full_capture_of_logs(LOG_INFO);
 
+  memset(&msg, 0, sizeof(msg));
+  helper_relay_msg_garbage(&msg, 42);
+
 #ifndef ALL_BUGS_ARE_FATAL
   /* Circuit must be non-NULL */
   tor_capture_bugs_(1);
-  tt_int_op(circuit_extend(cell, NULL), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, NULL), OP_EQ, -1);
   tt_int_op(smartlist_len(tor_get_captured_bug_log_()), OP_EQ, 1);
   tt_str_op(smartlist_get(tor_get_captured_bug_log_(), 0), OP_EQ,
             "!(ASSERT_PREDICT_UNLIKELY_(!circ))");
@@ -1308,7 +1312,7 @@ test_circuit_extend(void *arg)
   tt_int_op(circuit_extend(NULL, circ), OP_EQ, -1);
   tt_int_op(smartlist_len(tor_get_captured_bug_log_()), OP_EQ, 1);
   tt_str_op(smartlist_get(tor_get_captured_bug_log_(), 0), OP_EQ,
-            "!(ASSERT_PREDICT_UNLIKELY_(!cell))");
+            "!(ASSERT_PREDICT_UNLIKELY_(!rmsg))");
   tor_end_capture_bugs_();
   mock_clean_saved_logs();
 
@@ -1324,13 +1328,13 @@ test_circuit_extend(void *arg)
 
   /* Clients can't extend */
   server = 0;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   expect_log_msg("Got an extend cell, but running as a client. Closing.\n");
   mock_clean_saved_logs();
 
   /* But servers can. Unpack the cell, but fail parsing. */
   server = 1;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   expect_log_msg("Can't parse extend cell. Closing circuit.\n");
   mock_clean_saved_logs();
 
@@ -1343,7 +1347,7 @@ test_circuit_extend(void *arg)
   mock_extend_cell_parse_result = 0;
   mock_extend_cell_parse_calls = 0;
 
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   expect_log_msg(
     "Client asked me to extend without specifying an id_digest.\n");
@@ -1354,7 +1358,7 @@ test_circuit_extend(void *arg)
   memset(&mock_extend_cell_parse_cell_out.node_id, 0xAA,
              sizeof(mock_extend_cell_parse_cell_out.node_id));
 
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   expect_log_msg("Client asked me to extend to a zero destination port "
                  "or unspecified address '[scrubbed]'.\n");
@@ -1368,7 +1372,7 @@ test_circuit_extend(void *arg)
 
 #ifndef ALL_BUGS_ARE_FATAL
   tor_capture_bugs_(1);
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   tt_int_op(smartlist_len(tor_get_captured_bug_log_()), OP_EQ, 1);
   tt_str_op(smartlist_get(tor_get_captured_bug_log_(), 0), OP_EQ,
@@ -1389,7 +1393,7 @@ test_circuit_extend(void *arg)
   /* Test circuit not established, but don't launch another one */
   mock_channel_get_for_extend_launch_out = 0;
   mock_channel_get_for_extend_nchan = NULL;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, 0);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, 0);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   tt_int_op(mock_channel_get_for_extend_calls, OP_EQ, 1);
 
@@ -1409,7 +1413,7 @@ test_circuit_extend(void *arg)
   mock_channel_get_for_extend_launch_out = 1;
   mock_channel_get_for_extend_nchan = NULL;
   mock_channel_connect_nchan = fake_n_chan;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, 0);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, 0);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   tt_int_op(mock_channel_get_for_extend_calls, OP_EQ, 1);
   tt_int_op(mock_channel_connect_calls, OP_EQ, 1);
@@ -1433,7 +1437,7 @@ test_circuit_extend(void *arg)
   mock_channel_get_for_extend_nchan = fake_n_chan;
   mock_channel_connect_nchan = NULL;
   mock_circuit_deliver_create_cell_result = 0;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, 0);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, 0);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   tt_int_op(mock_channel_get_for_extend_calls, OP_EQ, 1);
   tt_int_op(mock_channel_connect_calls, OP_EQ, 0);
@@ -1456,7 +1460,7 @@ test_circuit_extend(void *arg)
   mock_channel_get_for_extend_nchan = fake_n_chan;
   mock_channel_connect_nchan = NULL;
   mock_circuit_deliver_create_cell_result = -1;
-  tt_int_op(circuit_extend(cell, circ), OP_EQ, -1);
+  tt_int_op(circuit_extend(&msg, circ), OP_EQ, -1);
   tt_int_op(mock_extend_cell_parse_calls, OP_EQ, 1);
   tt_int_op(mock_channel_get_for_extend_calls, OP_EQ, 1);
   tt_int_op(mock_channel_connect_calls, OP_EQ, 0);
@@ -1502,7 +1506,7 @@ test_circuit_extend(void *arg)
   mock_circuit_deliver_create_cell_calls = 0;
   mock_circuit_deliver_create_cell_result = 0;
 
-  tor_free(cell);
+  relay_msg_clear(&msg);
   /* circ and or_circ are the same object */
   tor_free(circ->n_hop);
   tor_free(circ->n_chan_create_cell);

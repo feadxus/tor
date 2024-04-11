@@ -62,6 +62,7 @@
 #include "core/or/cell_st.h"
 #include "core/or/or_circuit_st.h"
 #include "core/or/origin_circuit_st.h"
+#include "core/or/relay_msg.h"
 #include "core/or/var_cell_st.h"
 
 /** How many CELL_CREATE cells have we received, ever? */
@@ -389,6 +390,8 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
       circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_INTERNAL);
       return;
     }
+    relay_msg_codec_init(&TO_CIRCUIT(circ)->relay_msg_codec,
+                         params.subproto.relay_cell);
     memwipe(keys, 0, sizeof(keys));
   }
 }

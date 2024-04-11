@@ -18,6 +18,9 @@ struct cell_t {
   circid_t circ_id; /**< Circuit which received the cell. */
   uint8_t command; /**< Type of the cell: one of CELL_PADDING, CELL_CREATE,
                     * CELL_DESTROY, etc */
+  /* Relay cell protocol version. This tells us which format to use when
+   * parsing the payload. */
+  uint8_t relay_cell_proto;
   uint8_t payload[CELL_PAYLOAD_SIZE]; /**< Cell body. */
 };
 

@@ -13,6 +13,7 @@
 #include "core/or/conflux.h"
 #include "core/or/conflux_cell.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/circuitlist.h"
 
 #include "lib/crypt_ops/crypto_rand.h"
@@ -226,16 +227,14 @@ conflux_cell_parse_link_v1(const trn_cell_conflux_link_t *trn_link)
 }
 
 conflux_cell_link_t *
-conflux_cell_parse_link(const cell_t *cell, const uint16_t cell_len)
+conflux_cell_parse_link(const relay_msg_t *msg)
 {
   conflux_cell_link_t *link = NULL;
   trn_cell_conflux_link_t *trn_cell = NULL;
 
-  tor_assert(cell);
+  tor_assert(msg);
 
-  if (trn_cell_conflux_link_parse(&trn_cell,
-                                  cell->payload + RELAY_HEADER_SIZE,
-                                  cell_len) < 0) {
+  if (trn_cell_conflux_link_parse(&trn_cell, msg->body, msg->length) < 0) {
     log_fn(LOG_PROTOCOL_WARN, LD_CIRC,
            "Unable to parse CONFLUX_LINK cell.");
     goto end;
@@ -258,10 +257,10 @@ conflux_cell_parse_link(const cell_t *cell, const uint16_t cell_len)
 }
 
 conflux_cell_link_t *
-conflux_cell_parse_linked(const cell_t *cell, const uint16_t cell_len)
+conflux_cell_parse_linked(const relay_msg_t *msg)
 {
   /* At the moment, same exact payload so avoid code duplication. */
-  return conflux_cell_parse_link(cell, cell_len);
+  return conflux_cell_parse_link(msg);
 }
 
 conflux_cell_link_t *
@@ -284,15 +283,15 @@ conflux_cell_new_link(const uint8_t *nonce, uint64_t last_seqno_sent,
  * Extracts the sequence number from a switch cell.
  */
 uint32_t
-conflux_cell_parse_switch(const cell_t *cell, uint16_t rh_len)
+conflux_cell_parse_switch(const relay_msg_t *msg)
 {
   uint32_t seq = 0;
   trn_cell_conflux_switch_t *switch_cell = NULL;
-  tor_assert(cell);
+
+  tor_assert(msg);
 
   if (trn_cell_conflux_switch_parse(&switch_cell,
-                                    cell->payload + RELAY_HEADER_SIZE,
-                                    rh_len) < 0) {
+                                    msg->body, msg->length) < 0) {
     log_warn(LD_BUG, "Failed to parse switch cell");
     // Zero counts as a failure to the validation, since legs should
     // not switch after 0 cells.
@@ -313,6 +312,9 @@ conflux_send_switch_command(circuit_t *send_circ, uint64_t relative_seq)
   trn_cell_conflux_switch_t *switch_cell = trn_cell_conflux_switch_new();
   cell_t cell;
   bool ret = true;
+  ssize_t payload_len;
+  relay_msg_codec_t *codec;
+  relay_msg_t *msg = NULL;
 
   tor_assert(send_circ);
   tor_assert(relative_seq < UINT32_MAX);
@@ -321,8 +323,10 @@ conflux_send_switch_command(circuit_t *send_circ, uint64_t relative_seq)
 
   trn_cell_conflux_switch_set_seqnum(switch_cell, (uint32_t)relative_seq);
 
-  if (trn_cell_conflux_switch_encode(cell.payload, RELAY_PAYLOAD_SIZE,
-                                     switch_cell) < 0) {
+  payload_len = trn_cell_conflux_switch_encode(cell.payload,
+                                               RELAY_PAYLOAD_SIZE,
+                                               switch_cell);
+  if (payload_len < 0) {
     log_warn(LD_BUG, "Failed to encode conflux switch cell");
     ret = false;
     goto end;
@@ -330,16 +334,30 @@ conflux_send_switch_command(circuit_t *send_circ, uint64_t relative_seq)
 
   /* Send the switch command to the new hop */
   if (CIRCUIT_IS_ORIGIN(send_circ)) {
-    relay_send_command_from_edge(0, send_circ,
-                               RELAY_COMMAND_CONFLUX_SWITCH,
-                               (const char*)cell.payload,
-                               RELAY_PAYLOAD_SIZE,
-                               TO_ORIGIN_CIRCUIT(send_circ)->cpath->prev);
+    codec = &TO_ORIGIN_CIRCUIT(send_circ)->cpath->prev->relay_msg_codec;
   } else {
-    relay_send_command_from_edge(0, send_circ,
-                               RELAY_COMMAND_CONFLUX_SWITCH,
-                               (const char*)cell.payload,
-                               RELAY_PAYLOAD_SIZE, NULL);
+    codec = &send_circ->relay_msg_codec;
+  }
+
+  if (codec->relay_cell_proto == 0) {
+    /* Send the switch command to the new hop */
+    if (CIRCUIT_IS_ORIGIN(send_circ)) {
+      relay_send_command_from_edge(0, send_circ,
+                                   RELAY_COMMAND_CONFLUX_SWITCH,
+                                   (const char*)cell.payload,
+                                   RELAY_PAYLOAD_SIZE,
+                                   TO_ORIGIN_CIRCUIT(send_circ)->cpath->prev);
+    } else {
+      relay_send_command_from_edge(0, send_circ,
+                                   RELAY_COMMAND_CONFLUX_SWITCH,
+                                   (const char*)cell.payload,
+                                   RELAY_PAYLOAD_SIZE, NULL);
+    }
+  } else {
+    msg = tor_malloc_zero(sizeof(*msg));
+    relay_msg_set(codec->relay_cell_proto, RELAY_COMMAND_CONFLUX_SWITCH,
+                  0, cell.payload, payload_len, msg);
+    relay_msg_queue_packable(codec, msg);
   }
 
 end:

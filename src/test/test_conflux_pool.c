@@ -1,3 +1,4 @@
+#include "core/or/relay_msg.h"
 #define CHANNEL_OBJECT_PRIVATE
 #define TOR_TIMERS_PRIVATE
 #define TOR_CONFLUX_PRIVATE
@@ -11,6 +12,7 @@
 
 #include "core/or/or.h"
 #include "test/test.h"
+#include "test/test_helpers.h"
 #include "test/log_test_helpers.h"
 #include "lib/testsupport/testsupport.h"
 #include "core/or/connection_or.h"
@@ -223,25 +225,27 @@ static void
 process_mock_cell_delivery(void)
 {
   relay_header_t rh;
+  relay_msg_t *msg = NULL;
 
   cell_delivery_t *delivery = smartlist_pop_last(mock_cell_delivery);
   tor_assert(delivery);
   cell_t *cell = delivery->cell;
   circuit_t *dest_circ = delivery->circ;
   relay_header_unpack(&rh, cell->payload);
+  msg = helper_relay_msg_from_cell(cell);
 
   timers_advance_and_run(1);
 
   switch (cell->payload[0]) {
   case RELAY_COMMAND_CONFLUX_LINK:
     tor_assert(!CIRCUIT_IS_ORIGIN(dest_circ));
-    conflux_process_link(dest_circ, cell, rh.length);
+    conflux_process_link(dest_circ, msg);
     break;
   case RELAY_COMMAND_CONFLUX_LINKED:
     tor_assert(CIRCUIT_IS_ORIGIN(dest_circ));
     conflux_process_linked(dest_circ,
                            TO_ORIGIN_CIRCUIT(dest_circ)->cpath->prev,
-                           cell, rh.length);
+                           msg);
     break;
   case RELAY_COMMAND_CONFLUX_LINKED_ACK:
     tor_assert(!CIRCUIT_IS_ORIGIN(dest_circ));
@@ -253,10 +257,11 @@ process_mock_cell_delivery(void)
     // the case where the switch is initiated by the exit, we will need to
     // get the cpath layer hint for the client.
     tor_assert(!CIRCUIT_IS_ORIGIN(dest_circ));
-    conflux_process_switch_command(dest_circ, NULL, cell, &rh);
+    conflux_process_switch_command(dest_circ, NULL, msg);
     break;
   }
 
+  relay_msg_free(msg);
   tor_free(delivery);
   tor_free(cell);
   return;
@@ -356,6 +361,8 @@ simulate_single_hop_extend(origin_circuit_t *client, int exit)
 
   hop->package_window = circuit_initial_package_window();
   hop->deliver_window = CIRCWINDOW_START;
+
+  relay_msg_codec_init(&hop->relay_msg_codec, 0);
 }
 
 static void

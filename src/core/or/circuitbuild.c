@@ -50,7 +50,9 @@
 #include "core/or/onion.h"
 #include "core/or/ocirc_event.h"
 #include "core/or/policies.h"
+#include "core/or/protover.h"
 #include "core/or/relay.h"
+#include "core/or/relay_msg.h"
 #include "core/or/trace_probes_circuit.h"
 #include "core/or/crypt_path.h"
 #include "feature/client/bridges.h"
@@ -84,7 +86,6 @@
 #include "core/or/origin_circuit_st.h"
 
 #include "trunnel/extension.h"
-#include "trunnel/congestion_control.h"
 
 static int circuit_send_first_onion_skin(origin_circuit_t *circ);
 static int circuit_build_no_more_hops(origin_circuit_t *circ);
@@ -892,8 +893,8 @@ circuit_pick_create_handshake(uint8_t *cell_type_out,
     *cell_type_out = CELL_CREATE2;
     /* Only use ntor v3 with exits that support congestion control,
      * and only when it is enabled. */
-    if (ei->exit_supports_congestion_control &&
-        congestion_control_enabled())
+    if ((ei->exit_supports_congestion_control ||
+         ei->supports_ntorv3_subproto_req) && congestion_control_enabled())
       *handshake_type_out = ONION_HANDSHAKE_TYPE_NTOR_V3;
     else
       *handshake_type_out = ONION_HANDSHAKE_TYPE_NTOR;
@@ -1318,6 +1319,14 @@ circuit_finish_handshake(origin_circuit_t *circ,
   if (cpath_init_circuit_crypto(hop, keys, sizeof(keys), 0, 0)<0) {
     return -END_CIRC_REASON_TORPROTOCOL;
   }
+
+  log_debug(LD_CIRC, "Hop %s handshake finished with relay cell proto: %u.",
+            extend_info_describe(hop->extend_info),
+            params.subproto.relay_cell);
+
+  /* Allocate our relay message codec based on the negotiated relay cell
+   * protover. If none was negotiated, the default is version 0. */
+  relay_msg_codec_init(&hop->relay_msg_codec, params.subproto.relay_cell);
 
   if (params.cc_enabled) {
     int circ_len = circuit_get_cpath_len(circ);
@@ -2701,19 +2710,57 @@ circuit_upgrade_circuits_from_guard_wait(void)
  * given relay.  Assumes we are using ntor v3, or some later version that
  * supports parameter negotiatoin.
  *
- * On success, return 0 and pass back a message in the `out` parameters.
- * Otherwise, return -1.
+ * On success, return true and pass back a message in the `out` parameters.
+ * Otherwise, return false.
  **/
-int
-client_circ_negotiation_message(const extend_info_t *ei,
-                                uint8_t **msg_out,
+bool
+client_circ_negotiation_message(const extend_info_t *ei, uint8_t **msg_out,
                                 size_t *msg_len_out)
 {
+  bool ret = false;
+  uint8_t *encoded = NULL;
+  trn_extension_t *ext = NULL;
+  trn_extension_field_t *field = NULL;
+
   tor_assert(ei && msg_out && msg_len_out);
 
-  if (!ei->exit_supports_congestion_control) {
-    return -1;
+  ext = trn_extension_new();
+
+  /* Prioritize ntorv3 subprotocol request. */
+  if (ei->supports_ntorv3_subproto_req) {
+    field = protover_build_ntor3_ext_request(ei);
+    if (field) {
+      trn_extension_add_fields(ext, field);
+      trn_extension_set_num(ext, trn_extension_get_num(ext) + 1);
+    }
+  } else if (congestion_control_enabled() &&
+             ei->exit_supports_congestion_control) {
+    /* Fallback to old CC extension if the relay doesn't support ntorv3
+     * subproto request. */
+    field = congestion_control_build_ext_request();
+    if (field) {
+      trn_extension_add_fields(ext, field);
+      trn_extension_set_num(ext, trn_extension_get_num(ext) + 1);
+    }
   }
 
-  return congestion_control_build_ext_request(msg_out, msg_len_out);
+  /* Encode extension. */
+  ssize_t encoded_len = trn_extension_encoded_len(ext);
+  if (BUG(encoded_len < 0)) {
+    goto end;
+  }
+  encoded = tor_malloc_zero(encoded_len);
+  if (BUG(trn_extension_encode(encoded, encoded_len, ext) < 0)) {
+    tor_free(encoded);
+    goto end;
+  }
+  *msg_out = encoded;
+  *msg_len_out = encoded_len;
+
+  /* Free everything, we've encoded the request now. */
+  ret = true;
+
+ end:
+  trn_extension_free(ext);
+  return ret;
 }

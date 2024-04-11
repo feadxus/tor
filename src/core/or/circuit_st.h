@@ -14,6 +14,7 @@
 
 #include "core/or/or.h"
 
+#include "core/or/relay_msg_st.h"
 #include "lib/container/handles.h"
 
 #include "core/or/cell_queue_st.h"
@@ -269,6 +270,11 @@ struct circuit_t {
    * If this is NULL, and conflux object is set, it means this circuit is
    * linked and thus part of a usable set. */
   uint8_t *conflux_pending_nonce;
+
+  /** A relay message codec used for encoding and decoding message(s).
+   * It is initialized at the ntorv3 negotiation where the relay cell
+   * protocol is first known. */
+  relay_msg_codec_t relay_msg_codec;
 };
 
 #endif /* !defined(CIRCUIT_ST_H) */

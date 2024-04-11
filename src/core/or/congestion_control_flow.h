@@ -16,11 +16,10 @@
 void flow_control_new_consensus_params(const struct networkstatus_t *);
 
 bool circuit_process_stream_xoff(edge_connection_t *conn,
-                                 const crypt_path_t *layer_hint,
-                                 const cell_t *cell);
+                                 const crypt_path_t *layer_hint);
 bool circuit_process_stream_xon(edge_connection_t *conn,
                                 const crypt_path_t *layer_hint,
-                                const cell_t *cell);
+                                const relay_msg_t *msg);
 
 int flow_control_decide_xoff(edge_connection_t *stream);
 void flow_control_decide_xon(edge_connection_t *stream, size_t n_written);

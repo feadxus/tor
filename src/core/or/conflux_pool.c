@@ -196,7 +196,7 @@ conflux_free_(conflux_t *cfx)
   } SMARTLIST_FOREACH_END(leg);
   smartlist_free(cfx->legs);
 
-  SMARTLIST_FOREACH(cfx->ooo_q, conflux_cell_t *, cell, tor_free(cell));
+  SMARTLIST_FOREACH(cfx->ooo_q, conflux_msg_t *, cell, tor_free(cell));
   smartlist_free(cfx->ooo_q);
 
   memwipe(cfx->nonce, 0, sizeof(cfx->nonce));
@@ -1763,14 +1763,13 @@ conflux_circuit_has_opened(origin_circuit_t *orig_circ)
 
 /** Process a CONFLUX_LINK cell which arrived on the given circuit. */
 void
-conflux_process_link(circuit_t *circ, const cell_t *cell,
-                     const uint16_t cell_len)
+conflux_process_link(circuit_t *circ, const relay_msg_t *msg)
 {
   unlinked_circuits_t *unlinked = NULL;
   conflux_cell_link_t *link = NULL;
 
   tor_assert(circ);
-  tor_assert(cell);
+  tor_assert(msg);
 
   if (!conflux_is_enabled(circ)) {
     circuit_mark_for_close(circ, END_CIRC_REASON_TORPROTOCOL);
@@ -1810,7 +1809,7 @@ conflux_process_link(circuit_t *circ, const cell_t *cell,
   }
 
   /* On errors, logging is emitted in this parsing function. */
-  link = conflux_cell_parse_link(cell, cell_len);
+  link = conflux_cell_parse_link(msg);
   if (!link) {
     log_fn(LOG_PROTOCOL_WARN, LD_CIRC, "Unable to parse "
            "CONFLUX_LINK cell. Closing circuit.");
@@ -1875,8 +1874,7 @@ conflux_process_link(circuit_t *circ, const cell_t *cell,
 /** Process a CONFLUX_LINKED cell which arrived on the given circuit. */
 void
 conflux_process_linked(circuit_t *circ, crypt_path_t *layer_hint,
-                       const cell_t *cell,
-                       const uint16_t cell_len)
+                       const relay_msg_t *msg)
 {
   conflux_cell_link_t *link = NULL;
 
@@ -1936,7 +1934,7 @@ conflux_process_linked(circuit_t *circ, crypt_path_t *layer_hint,
   tor_assert_nonfatal(circ->purpose == CIRCUIT_PURPOSE_CONFLUX_UNLINKED);
 
   /* On errors, logging is emitted in this parsing function. */
-  link = conflux_cell_parse_link(cell, cell_len);
+  link = conflux_cell_parse_link(msg);
   if (!link) {
     goto close;
   }
@@ -2008,7 +2006,7 @@ conflux_process_linked(circuit_t *circ, crypt_path_t *layer_hint,
   }
 
   /* This cell is now considered valid for clients. */
-  circuit_read_valid_data(TO_ORIGIN_CIRCUIT(circ), cell_len);
+  circuit_read_valid_data(TO_ORIGIN_CIRCUIT(circ), msg->length);
 
   goto end;
 

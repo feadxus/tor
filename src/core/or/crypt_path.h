@@ -30,9 +30,6 @@ cpath_get_incoming_digest(const crypt_path_t *cpath);
 void cpath_sendme_record_cell_digest(crypt_path_t *cpath,
                                      bool is_foward_digest);
 
-void
-cpath_set_cell_forward_digest(crypt_path_t *cpath, cell_t *cell);
-
 crypt_path_t *cpath_get_next_non_open_hop(crypt_path_t *cpath);
 
 void cpath_sendme_circuit_record_inbound_cell(crypt_path_t *cpath);
