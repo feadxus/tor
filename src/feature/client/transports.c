@@ -1809,7 +1809,7 @@ pt_get_extra_info_descriptor_string(void)
       }
       if (transport_info_args) {
         smartlist_add_asprintf(string_chunks, "transport-info%s",
-                               transport_info_args);
+                               transport_info_args ? transport_info_args : "");
         tor_free(transport_info_args);
       }
     }
