@@ -1807,11 +1807,11 @@ pt_get_extra_info_descriptor_string(void)
         tor_asprintf(&transport_info_args, " implementation=%s",
                      mp->implementation);
       }
-      if (transport_info_args) {
-        smartlist_add_asprintf(string_chunks, "transport-info%s",
-                               transport_info_args ? transport_info_args : "");
-        tor_free(transport_info_args);
-      }
+      /* Always put in the line even if empty. Else, we don't know to which
+       * transport this applies to. */
+      smartlist_add_asprintf(string_chunks, "transport-info%s",
+                             transport_info_args ? transport_info_args : "");
+      tor_free(transport_info_args);
     }
   } SMARTLIST_FOREACH_END(mp);
 
