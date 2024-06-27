@@ -493,6 +493,12 @@ static const char CLIENT_CIPHER_LIST[] =
    * of any cipher we say. */
   "!SSLv2"
   ;
+char CLIENT_CIPHER_LIST_TLSv13[] =
+#ifndef COCCI
+#include "lib/tls/ciphers_v13.inc"
+#endif
+  ""
+  ;
 #undef CIPHER
 #undef XCIPHER
 
@@ -1094,8 +1100,15 @@ tor_tls_new(tor_socket_t sock, int isServer)
   }
 #endif /* defined(SSL_CTRL_SET_MAX_PROTO_VERSION) */
 
+  size_t TLSv13len = strlen(CLIENT_CIPHER_LIST_TLSv13);
+  if (TLSv13len && CLIENT_CIPHER_LIST_TLSv13[TLSv13len - 1] == ':') {
+    CLIENT_CIPHER_LIST_TLSv13[TLSv13len - 1] = '\0';
+  }
   if (!SSL_set_cipher_list(result->ssl,
-                     isServer ? SERVER_CIPHER_LIST : CLIENT_CIPHER_LIST)) {
+                     isServer ? SERVER_CIPHER_LIST : CLIENT_CIPHER_LIST)
+      || (!isServer && !SSL_set_ciphersuites(result->ssl,
+                     CLIENT_CIPHER_LIST_TLSv13))
+      ) {
     tls_log_errors(NULL, LOG_WARN, LD_NET, "setting ciphers");
 #ifdef SSL_set_tlsext_host_name
     SSL_set_tlsext_host_name(result->ssl, NULL);
