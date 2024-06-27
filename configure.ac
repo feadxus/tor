@@ -1007,7 +1007,7 @@ TOR_SEARCH_LIBRARY(openssl, $tryssldir, [-lssl -lcrypto $TOR_LIB_GDI $TOR_LIB_WS
     [struct ssl_cipher_st;
      unsigned SSL_CIPHER_get_id(const struct ssl_cipher_st *);
      char *getenv(const char *);],
-    dnl This funny-looking test program calls getenv, so that the compiler
+    dnl This funny-looking test program calls getenv, so that the compile=3r
     dnl will neither make code that call SSL_CIPHER_get_id(NULL) [producing
     dnl a crash], nor optimize out the call to SSL_CIPHER_get_id().
     dnl We look for SSL_cipher_get_id() because it is present in
@@ -1323,8 +1323,18 @@ if test "x$enable_pic" = "xyes"; then
     TOR_CHECK_CFLAGS(-fPIC)
 fi
 
+GLIBC_VERSION=`pkg-config --modversion glib-2.0`
+
 if test "x$enable_gcc_hardening" != "xno"; then
-    CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2"
+    if test $ax_cv_c_compiler_version > 4; then
+      if test GLIBC_VERSION > 2.33; then
+        CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3"
+      else
+        CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2"
+      fi
+    else
+      CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2"
+    fi
     if test "x$have_clang" = "xyes"; then
         TOR_CHECK_CFLAGS(-Qunused-arguments)
     fi
