@@ -6322,6 +6322,9 @@ test_config_check_bridge_distribution_setting_valid(void *arg)
   tt_int_op(check_bridge_distribution_setting("https"), OP_EQ, 0);
   tt_int_op(check_bridge_distribution_setting("email"), OP_EQ, 0);
   tt_int_op(check_bridge_distribution_setting("moat"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("settings"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("telegram"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("reserved"), OP_EQ, 0);
 
   // Check all the possible values we support right now with weird casing.
   tt_int_op(check_bridge_distribution_setting("NoNe"), OP_EQ, 0);
@@ -6329,6 +6332,9 @@ test_config_check_bridge_distribution_setting_valid(void *arg)
   tt_int_op(check_bridge_distribution_setting("hTTps"), OP_EQ, 0);
   tt_int_op(check_bridge_distribution_setting("emAIl"), OP_EQ, 0);
   tt_int_op(check_bridge_distribution_setting("moAt"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("seTTiNgs"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("teLEGRam"), OP_EQ, 0);
+  tt_int_op(check_bridge_distribution_setting("reSErVed"), OP_EQ, 0);
 
   // Invalid values.
   tt_int_op(check_bridge_distribution_setting("x\rx"), OP_EQ, -1);
