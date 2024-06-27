@@ -41,6 +41,7 @@ const char *escaped_safe_str_client(const char *address);
 const char *escaped_safe_str(const char *address);
 void init_protocol_warning_severity_level(void);
 int get_protocol_warning_severity_level(void);
+bool check_for_url(const char *filepath);
 
 #define LOG_PROTOCOL_WARN (get_protocol_warning_severity_level())
 

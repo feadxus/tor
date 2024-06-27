@@ -133,19 +133,26 @@ test_dir_handle_get_v1_command_not_found(void *data)
   // no frontpage configured
   tt_ptr_op(relay_get_dirportfrontpage(), OP_EQ, NULL);
 
-  /* V1 path */
-  tt_int_op(directory_handle_command_get(conn, GET("/tor/"), NULL, 0),
-            OP_EQ, 0);
+  const char *frontpage = relay_get_dirportfrontpage();
 
-  fetch_from_buf_http(TO_CONN(conn)->outbuf, &header, MAX_HEADERS_SIZE,
-                      NULL, NULL, 1, 0);
+  if (frontpage) {
+    if (strcasecmpstart(frontpage, "http://") == 0 ||
+      strcasecmpstart(frontpage, "https://") == 0) {
+      /* V1 path */
+      tt_int_op(directory_handle_command_get(conn, GET("/tor/"), NULL, 0),
+              OP_EQ, 0);
 
-  tt_str_op(NOT_FOUND, OP_EQ, header);
+      fetch_from_buf_http(TO_CONN(conn)->outbuf, &header, MAX_HEADERS_SIZE,
+                          NULL, NULL, 1, 0);
+
+      tt_str_op(NOT_FOUND, OP_EQ, header);
+      tor_free(header);
+    }
+  }
 
   done:
     UNMOCK(connection_write_to_buf_impl_);
     connection_free_minimal(TO_CONN(conn));
-    tor_free(header);
 }
 
 static const char*

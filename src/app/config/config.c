@@ -3096,6 +3096,18 @@ options_validate(const or_options_t *old_options, or_options_t *options,
   STMT_BEGIN log_warn(LD_CONFIG, args, ##__VA_ARGS__); STMT_END
 #endif /* defined(__GNUC__) && __GNUC__ <= 3 */
 
+/**
+ * Check if <b>filepath</b> is a url.
+ *
+ * Return 1 if <b>filepath</b> is a url.
+*/
+bool
+check_for_url(const char *filepath)
+{
+  return (strcasecmpstart(filepath, "http://") == 0 ||
+  strcasecmpstart(filepath, "https://") == 0);
+}
+
 /** Log a warning message iff <b>filepath</b> is not absolute.
  * Warning message must contain option name <b>option</b> and
  * an absolute path that <b>filepath</b> will resolve to.
@@ -3109,11 +3121,13 @@ warn_if_option_path_is_relative(const char *option,
                                 const char *filepath)
 {
   if (filepath && path_is_relative(filepath)) {
-    char *abs_path = make_path_absolute(filepath);
-    COMPLAIN("Path for %s (%s) is relative and will resolve to %s."
-             " Is this what you wanted?", option, filepath, abs_path);
-    tor_free(abs_path);
-    return 1;
+    if (!check_for_url(filepath)) {
+      char *abs_path = make_path_absolute(filepath);
+      COMPLAIN("Path for %s (%s) is relative and will resolve to %s."
+              " Is this what you wanted?", option, filepath, abs_path);
+      tor_free(abs_path);
+      return 1;
+    }
   }
   return 0;
 }
@@ -3138,7 +3152,7 @@ warn_about_relative_paths(const or_options_t *options)
     const char *name = cv->member.name;
     line = config_get_assigned_option(mgr, options, name, 0);
     if (line)
-      n += warn_if_option_path_is_relative(name, line->value);
+        n += warn_if_option_path_is_relative(name,line->value);
     config_free_lines(line);
   } SMARTLIST_FOREACH_END(cv);
   smartlist_free(vars);
@@ -3153,7 +3167,7 @@ warn_about_relative_paths(const or_options_t *options)
 
 /* Validate options related to the scheduler. From the Schedulers list, the
  * SchedulerTypes_ list is created with int values so once we select the
- * scheduler, which can happen anytime at runtime, we don't have to parse
+ * scheduler, which can happen anytime at runtime, we don' t have to parse
  * strings and thus be quick.
  *
  * Return 0 on success else -1 and msg is set with an error message. */
