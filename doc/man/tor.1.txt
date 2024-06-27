@@ -4052,6 +4052,10 @@ __DataDirectory__/**`hashed-fingerprint`**::
     Only used by bridges. Contains the hashed fingerprint of the bridge's
     identity key. (That is, the hash of the hash of the identity key.)
 
+__DataDirectory__/**`bridgelines`**::
+    Only used by bridges. Contains the bridge lines that clients can use to
+    connect using pluggable transports.
+
 __DataDirectory__/**`approved-routers`**::
     Only used by authoritative directory servers. Each line lists a status and
     an identity, separated by whitespace. Identities can be hex-encoded RSA

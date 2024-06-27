@@ -57,6 +57,7 @@ void pt_configure_remaining_proxies(void);
 int pt_proxies_configuration_pending(void);
 
 char *pt_get_extra_info_descriptor_string(void);
+void pt_update_bridge_lines(void);
 
 void pt_free_all(void);
 

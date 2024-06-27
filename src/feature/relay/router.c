@@ -382,6 +382,7 @@ set_server_identity_key(crypto_pk_t *k)
     log_err(LD_BUG, "Couldn't compute our own identity key digest.");
     tor_assert(0);
   }
+  pt_update_bridge_lines();
 }
 
 #ifdef TOR_UNIT_TESTS

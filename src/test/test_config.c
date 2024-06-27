@@ -1786,9 +1786,7 @@ test_config_find_my_address(void *arg)
    * PublishServerDescriptor_ so we are allowed to hold it.
    */
   options->PublishServerDescriptor_ = NO_DIRINFO;
-  if (p->family == AF_INET) {
-    options->AssumeReachable = 1;
-  }
+  options->AssumeReachable = 1;
   config_line_append(&options->Address, "Address", p->internal_ip);
 
   tor_addr_parse(&test_addr, p->internal_ip);
