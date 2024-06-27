@@ -136,12 +136,18 @@ token_bucket_rw_t global_relayed_bucket;
 /* XXX we might want to keep stats about global_relayed_*_bucket too. Or not.*/
 /** How many bytes have we read since we started the process? */
 static uint64_t stats_n_bytes_read = 0;
+/** How many bytes have we read since the last hibernation? */
+static uint64_t stats_n_bytes_read_session = 0;
 /** How many bytes have we written since we started the process? */
 static uint64_t stats_n_bytes_written = 0;
+/** How many bytes have we written since The last hibernation? */
+static uint64_t stats_n_bytes_written_session = 0;
 /** What time did this process start up? */
 time_t time_of_process_start = 0;
-/** How many seconds have we been running? */
+/** How many seconds have we been running while actively passing traffic? */
 static long stats_n_seconds_working = 0;
+/** How many seconds has the daemon been running from initial launch? */
+static long daemon_seconds_working = 0;
 /** How many times have we returned from the main loop successfully? */
 static uint64_t stats_n_main_loop_successes = 0;
 /** How many times have we received an error from the main loop? */
@@ -458,13 +464,44 @@ get_bytes_read,(void))
 }
 
 /**
- * Return the amount of network traffic read, in bytes, over the life of this
- * process.
+ * Return the amount of network traffic read, in bytes, over the current
+ * session since the last hibernation or the process started.
+ */
+MOCK_IMPL(uint64_t,
+get_bytes_read_session,(void))
+{
+  return stats_n_bytes_read_session;
+}
+
+/**
+ * Return the amount of network traffic written, in bytes,
+ * over the life of this process.
  */
 MOCK_IMPL(uint64_t,
 get_bytes_written,(void))
 {
   return stats_n_bytes_written;
+}
+
+/**
+ * Return the amount of network traffic written, in bytes, over the current
+ * session since the last hibernation or the process started.
+ */
+MOCK_IMPL(uint64_t,
+get_bytes_written_session,(void))
+{
+  return stats_n_bytes_written_session;
+}
+
+/*
+** Reset the counters for how much data has been read or written during
+** this session.
+ */
+MOCK_IMPL(void,
+reset_data_rw, (void))
+{
+  stats_n_bytes_read_session = 0;
+  stats_n_bytes_written_session = 0;
 }
 
 /**
@@ -2283,6 +2320,7 @@ update_current_time(time_t now)
     }
   } else if (seconds_elapsed > 0) {
     stats_n_seconds_working += seconds_elapsed;
+    daemon_seconds_working += seconds_elapsed;
   }
 
   update_approx_time(now);
@@ -2552,18 +2590,26 @@ run_main_loop_until_done(void)
     return loop_result;
 }
 
-/** Returns Tor's uptime. */
+/** Returns Tor's uptime of actively passing traffic */
 MOCK_IMPL(long,
 get_uptime,(void))
 {
   return stats_n_seconds_working;
 }
 
-/** Reset Tor's uptime. */
+/** Return's Tor's uptime of the daemon itself */
+MOCK_IMPL(long,
+get_daemon_uptime,(void))
+{
+  return daemon_seconds_working;
+}
+
+/** Reset Tor's uptime of actively passing traffic. */
 MOCK_IMPL(void,
 reset_uptime,(void))
 {
   stats_n_seconds_working = 0;
+  reset_data_rw();
 }
 
 void
