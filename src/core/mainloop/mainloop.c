@@ -138,6 +138,15 @@ token_bucket_rw_t global_relayed_bucket;
 static uint64_t stats_n_bytes_read = 0;
 /** How many bytes have we written since we started the process? */
 static uint64_t stats_n_bytes_written = 0;
+/** How many bytes have we read for directory purpose since we started the
+ * process? Includes hsdir connections */
+static uint64_t stats_n_dir_bytes_read = 0;
+/** How many bytes have we written for directory purpose since we started the
+ * process? Does not include hsdir connections */
+static uint64_t stats_n_dir_bytes_written = 0;
+/** How many bytes have we written for hs directory purpose since we started
+ * the process? */
+static uint64_t stats_n_hsdir_bytes_written = 0;
 /** What time did this process start up? */
 time_t time_of_process_start = 0;
 /** How many seconds have we been running? */
@@ -476,6 +485,44 @@ stats_increment_bytes_read_and_written(uint64_t r, uint64_t w)
 {
   stats_n_bytes_read += r;
   stats_n_bytes_written += w;
+}
+
+/**
+ * Return the amount of directory traffic read, in bytes, over the life of this
+ * process.
+ */
+uint64_t
+get_dir_bytes_read(void)
+{
+  return stats_n_dir_bytes_read;
+}
+
+/**
+ * Return the amount of directory traffic read, in bytes, over the life of this
+ * process.
+ */
+uint64_t
+get_dir_bytes_written(bool hs)
+{
+  if (hs)
+    return stats_n_hsdir_bytes_written;
+  else
+    return stats_n_dir_bytes_written;
+}
+
+/**
+ * Increment the amount of directory traffic read and written, over the life of
+ * this process.
+ */
+void
+stats_increment_dir_bytes_read_and_written(uint64_t r, uint64_t w, bool hs)
+{
+  stats_n_dir_bytes_read += r;
+  if (hs) {
+    stats_n_hsdir_bytes_written += w;
+  } else {
+    stats_n_dir_bytes_written += w;
+  }
 }
 
 /** Set the event mask on <b>conn</b> to <b>events</b>.  (The event

@@ -43,6 +43,8 @@ typedef enum {
   RELAY_METRICS_NUM_DOS,
   /** Denial of Service defenses subsystem. */
   RELAY_METRICS_NUM_TRAFFIC,
+  /** Denial of Service defenses subsystem. */
+  RELAY_METRICS_NUM_TRAFFIC_DIRECTORY,
   /** Relay flags. */
   RELAY_METRICS_RELAY_FLAGS,
   /** Numer of circuits. */

@@ -61,6 +61,7 @@ static void fill_relay_drop_cell(void);
 static void fill_relay_flags(void);
 static void fill_tcp_exhaustion_values(void);
 static void fill_traffic_values(void);
+static void fill_traffic_directory_values(void);
 static void fill_signing_cert_expiry(void);
 
 static void fill_est_intro_cells(void);
@@ -171,6 +172,13 @@ static const relay_metrics_entry_t base_metrics[] =
     .name = METRICS_NAME(relay_traffic_bytes),
     .help = "Traffic related counters",
     .fill_fn = fill_traffic_values,
+  },
+  {
+    .key = RELAY_METRICS_NUM_TRAFFIC_DIRECTORY,
+    .type = METRICS_TYPE_COUNTER,
+    .name = METRICS_NAME(relay_traffic_directory_bytes),
+    .help = "Traffic counters related to locally served directory requests",
+    .fill_fn = fill_traffic_directory_values,
   },
   {
     .key = RELAY_METRICS_RELAY_FLAGS,
@@ -397,6 +405,37 @@ fill_traffic_values(void)
   metrics_store_entry_add_label(sentry,
           metrics_format_label("direction", "written"));
   metrics_store_entry_update(sentry, get_bytes_written());
+}
+
+/** Fill function for the RELAY_METRICS_NUM_TRAFFIC_DIRECTORY metric. */
+static void
+fill_traffic_directory_values(void)
+{
+  const relay_metrics_entry_t *rentry =
+    &base_metrics[RELAY_METRICS_NUM_TRAFFIC_DIRECTORY];
+  metrics_store_entry_t *sentry;
+
+  sentry = metrics_store_add(
+      the_store, rentry->type, rentry->name, rentry->help, 0, NULL);
+  metrics_store_entry_add_label(sentry,
+          metrics_format_label("direction", "read"));
+  metrics_store_entry_update(sentry, get_dir_bytes_read());
+
+  sentry = metrics_store_add(the_store, rentry->type, rentry->name,
+                             rentry->help, 0, NULL);
+  metrics_store_entry_add_label(sentry,
+          metrics_format_label("direction", "written"));
+  metrics_store_entry_add_label(sentry,
+          metrics_format_label("kind", "directory"));
+  metrics_store_entry_update(sentry, get_dir_bytes_written(false));
+
+  sentry = metrics_store_add(the_store, rentry->type, rentry->name,
+                             rentry->help, 0, NULL);
+  metrics_store_entry_add_label(sentry,
+          metrics_format_label("direction", "written"));
+  metrics_store_entry_add_label(sentry,
+          metrics_format_label("kind", "hsdir"));
+  metrics_store_entry_update(sentry, get_dir_bytes_written(true));
 }
 
 /** Fill function for the RELAY_METRICS_NUM_DOS metric. */

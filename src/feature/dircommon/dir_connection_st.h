@@ -31,6 +31,9 @@ struct dir_connection_t {
   /** Is this dirconn direct, or via a multi-hop Tor circuit?
    * Direct connections can use the DirPort, or BEGINDIR over the ORPort. */
   unsigned int dirconn_direct:1;
+  /** Is this dirconn used to fetch/upload hs desciptor?
+   * Only set on relay side, unused on client side. */
+  unsigned int hs_request:1;
 
   /** If we're fetching descriptors, what router purpose shall we assign
    * to them? */
