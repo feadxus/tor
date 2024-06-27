@@ -521,6 +521,7 @@ static const config_var_t option_vars_[] = {
       LINELIST_S, RendConfigLines, NULL),
   VAR("HiddenServiceOnionBalanceInstance",
       LINELIST_S, RendConfigLines, NULL),
+  VAR("HiddenServiceCAA", LINELIST_S, RendConfigLines, NULL),
   VAR("HiddenServicePoWDefensesEnabled", LINELIST_S, RendConfigLines, NULL),
   VAR("HiddenServicePoWQueueRate", LINELIST_S, RendConfigLines, NULL),
   VAR("HiddenServicePoWQueueBurst", LINELIST_S, RendConfigLines, NULL),

@@ -178,6 +178,9 @@ typedef struct hs_desc_encrypted_data_t {
   /** A list of intro points. Contains hs_desc_intro_point_t objects. */
   smartlist_t *intro_points;
 
+  /** A list of CAA lines */
+  smartlist_t *caa;
+
 #ifdef TOR_UNIT_TESTS
   /** In unit tests only, we can include additional arbitrary plaintext.
    * This is used to test parser validation by adding invalid inner data to
@@ -202,6 +205,8 @@ typedef struct hs_desc_superencrypted_data_t {
 
   /** Decoding only: Size of the encrypted_blob */
   size_t encrypted_blob_size;
+
+  bool caa_critical;
 } hs_desc_superencrypted_data_t;
 
 /** Plaintext data that is unencrypted information of the descriptor. */
