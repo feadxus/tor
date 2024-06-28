@@ -489,8 +489,13 @@ get_n_primary_guards_to_use(guard_usage_t usage)
   int param_default;
 
   /* If the user has explicitly configured the amount of guards, use
-     that. Otherwise, fall back to the default value. */
-  if (usage == GUARD_USAGE_DIRGUARD) {
+   * that. Otherwise, fall back to the default value.
+   *
+   * If we're planning to use a directory guard, use the bigger number;
+   * but as an exception use the more conservative pick if we're configured
+   * to minimize the number of bridges we touch. */
+  if (usage == GUARD_USAGE_DIRGUARD &&
+      !get_options()->FetchBridgeDescsJIT) {
     configured = get_options()->NumDirectoryGuards;
     param_name = "guard-n-primary-dir-guards-to-use";
     param_default = DFLT_N_PRIMARY_DIR_GUARDS_TO_USE;
@@ -2135,7 +2140,8 @@ select_primary_guard_for_circuit(guard_selection_t *gs,
                                  const entry_guard_restriction_t *rst,
                                  unsigned *state_out)
 {
-  const int need_descriptor = (usage == GUARD_USAGE_TRAFFIC);
+  const int need_descriptor = (usage == GUARD_USAGE_TRAFFIC) ||
+                              get_options()->UseBridges;
   entry_guard_t *chosen_guard = NULL;
 
   int num_entry_guards_to_consider = get_n_primary_guards_to_use(usage);
@@ -2229,7 +2235,8 @@ select_confirmed_guard_for_circuit(guard_selection_t *gs,
                                   const entry_guard_restriction_t *rst,
                                   unsigned *state_out)
 {
-  const int need_descriptor = (usage == GUARD_USAGE_TRAFFIC);
+  const int need_descriptor = (usage == GUARD_USAGE_TRAFFIC) ||
+                              get_options()->UseBridges;
 
   SMARTLIST_FOREACH_BEGIN(gs->confirmed_entry_guards, entry_guard_t *, guard) {
     if (guard->is_primary)
@@ -3975,6 +3982,39 @@ guards_retry_optimistic(const or_options_t *options)
   return 1;
 }
 
+/** Fetch descriptors but for the bridges that we intend to actually
+ * use, as sorted by the sampled guard list. Don't fetch descriptors
+ * for bridges later on the guard list. */
+void
+fetch_descriptors_for_first_guards(const or_options_t *options, time_t now)
+{
+  guard_selection_t *gs = get_guard_selection_info();
+  if (!gs->primary_guards_up_to_date)
+    entry_guards_update_primary(gs);
+
+  int n_considered = 0;
+  int num_primary_to_check = get_n_primary_guards_to_use(GUARD_USAGE_TRAFFIC);
+
+  SMARTLIST_FOREACH_BEGIN(gs->primary_entry_guards, entry_guard_t *, guard) {
+    entry_guard_consider_retry(guard);
+    if (guard->is_reachable == GUARD_REACHABLE_NO)
+      continue;
+    n_considered++;
+    if (!guard_has_descriptor(guard)) {
+      /* we want to try fetching it now */
+      bridge_info_t *bridge = get_bridge_info_for_guard(guard);
+      if (!prep_for_bridge_descriptor_fetch(bridge, options, now))
+        continue;
+      launch_direct_bridge_descriptor_fetch(bridge);
+    }
+    if (n_considered >= num_primary_to_check) {
+//      log_info(LD_GUARD, "Have looked at first %d guards; good enough.",
+//               n_considered);
+      break;
+    }
+  } SMARTLIST_FOREACH_END(guard);
+}
+
 /**
  * Check if we are missing any crucial dirinfo for the guard subsystem to
  * work. Return NULL if everything went well, otherwise return a newly
@@ -3994,11 +4034,10 @@ guard_selection_get_err_str_if_dir_info_missing(guard_selection_t *gs,
   int n_considered = 0;
   int num_primary_to_check;
 
-  /* We want to check for the descriptor of at least the first two primary
+  /* We want to check for the descriptor of the first n primary
    * guards in our list, since these are the guards that we typically use for
    * circuits. */
   num_primary_to_check = get_n_primary_guards_to_use(GUARD_USAGE_TRAFFIC);
-  num_primary_to_check++;
 
   SMARTLIST_FOREACH_BEGIN(gs->primary_entry_guards, entry_guard_t *, guard) {
     entry_guard_consider_retry(guard);

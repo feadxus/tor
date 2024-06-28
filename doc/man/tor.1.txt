@@ -594,6 +594,14 @@ forward slash (/) in the configuration file and on the command line.
     FallbackDir replaces Tor's default hard-coded FallbackDirs (if any).
     (See <<DirAuthority,DirAuthority>> for an explanation of each flag.)
 
+[[FetchBridgeDescsJIT]] **FetchBridgeDescsJIT** **0**|**1**::
+    If set to 1 along with UseBridges, Tor will only fetch descriptors for
+    the first NumEntryGuards (or guard-n-primary-guards-to-use) bridges,
+    rather than the default behavior of fetching descriptors for every
+    configured bridge. When this option is set, we change behavior to use
+    this more conservative value rather than the larger NumDirectoryGuards
+    (or guard-n-primary-dir-guards-to-use). (Default: 0)
+
 [[FetchDirInfoEarly]] **FetchDirInfoEarly** **0**|**1**::
     If set to 1, Tor will always fetch directory information like other
     directory caches, even if you don't meet the normal criteria for fetching

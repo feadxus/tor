@@ -1,0 +1,8 @@
+  o Major bugfixes (bridges):
+    - Add a new config option FetchBridgeDescsJIT to fetch bridge
+      descriptors "just in time" for the bridges that Tor plans to
+      use. Now if you have a large bridge list (such as when using
+      Tor Browser's built-in bridges) or you are using transports like
+      Snowflake where each descriptor fetch is an expensive operation,
+      you will only reach out to the bridges whose descriptors you
+      actually need. Fixes bug 40578; bugfix on 0.2.0.3-alpha.

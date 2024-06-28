@@ -45,11 +45,14 @@ void learned_router_identity(const tor_addr_t *addr, uint16_t port,
 
 void bridge_add_from_config(struct bridge_line_t *bridge_line);
 void retry_bridge_descriptor_fetch_directly(const char *digest);
+int prep_for_bridge_descriptor_fetch(bridge_info_t *bridge,
+                                     const or_options_t *options, time_t now);
 void fetch_bridge_descriptors(const or_options_t *options, time_t now);
 void learned_bridge_descriptor(routerinfo_t *ri,
                                int from_cache, int desc_is_new);
 const smartlist_t *get_socks_args_by_bridge_addrport(const tor_addr_t *addr,
                                                      uint16_t port);
+void launch_direct_bridge_descriptor_fetch(bridge_info_t *bridge);
 
 int any_bridges_dont_support_microdescriptors(void);
 

@@ -1,0 +1,7 @@
+  o Minor bugfixes (bridge users):
+    - When choosing a bridge to fetch directory info from, only select
+      from among bridges whose descriptors we already have. In theory we
+      don't need the bridge's descriptor to ask it for directory info,
+      but in practice the code that does the fetching assumes we do. This
+      mistake only slows down bootstrap, but shouldn't prevent it. Fixes
+      bug 40746; bugfix on 0.3.0.3-alpha.

@@ -473,6 +473,7 @@ static const config_var_t option_vars_[] = {
   V(FascistFirewall,             BOOL,     "0"),
   V(FirewallPorts,               CSV,      ""),
   OBSOLETE("FastFirstHopPK"),
+  V(FetchBridgeDescsJIT,         BOOL,     "0"),
   V(FetchDirInfoEarly,           BOOL,     "0"),
   V(FetchDirInfoExtraEarly,      BOOL,     "0"),
   V(FetchServerDescriptors,      BOOL,     "1"),
@@ -3424,6 +3425,17 @@ options_validate_cb(const void *old_options_, void *options_, char **msg)
   if (options->FetchDirInfoExtraEarly && !options->FetchDirInfoEarly)
     REJECT("FetchDirInfoExtraEarly requires that you also set "
            "FetchDirInfoEarly");
+
+  if (options->FetchBridgeDescsJIT && !options->UseBridges)
+    REJECT("FetchBridgeDescsJIT requires that you also set UseBridges.");
+
+  if (options->FetchBridgeDescsJIT && options->UpdateBridgesFromAuthority) {
+    /* there's no reason in principle why we can't allow both, but we
+     * really should be making UpdateBridgesFromAuthority obsolete, so
+     * we skipped supporting it here. */
+    REJECT("Cannot set both FetchBridgeDescsJIT and "
+           "UpdateBridgesFromAuthority.");
+  }
 
   if (options->ConnLimit <= 0) {
     tor_asprintf(msg,

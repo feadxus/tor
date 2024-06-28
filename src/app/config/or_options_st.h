@@ -608,6 +608,11 @@ struct or_options_t {
   int SbwsExit;
 
   int RephistTrackTime; /**< How many seconds do we keep rephist info? */
+
+  /** When using bridges, should we fetch descriptors for only the bridges
+   * we plan to use? Off by default until it's gotten more testing. */
+  int FetchBridgeDescsJIT;
+
   /** Should we always fetch our dir info on the mirror schedule (which
    * means directly from the authorities) no matter our other config? */
   int FetchDirInfoEarly;
