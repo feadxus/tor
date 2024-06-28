@@ -110,6 +110,7 @@
 #include "feature/stats/connstats.h"
 #include "feature/stats/rephist.h"
 #include "feature/stats/bwhist.h"
+#include "feature/stats/geoip_stats.h"
 #include "lib/crypt_ops/crypto_util.h"
 #include "lib/crypt_ops/crypto_format.h"
 #include "lib/geoip/geoip.h"
@@ -2027,6 +2028,7 @@ connection_handle_listener_read(connection_t *conn, int new_type)
     if (new_type == CONN_TYPE_OR) {
       /* Assess with the connection DoS mitigation subsystem if this address
        * can open a new connection. */
+      geoip_note_client_attempt(&addr, approx_time());
       if (dos_conn_addr_get_defense_type(&addr) == DOS_CONN_DEFENSE_CLOSE) {
         rep_hist_note_conn_rejected(new_type, conn->socket_family);
         tor_close_socket(news);

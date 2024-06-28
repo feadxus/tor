@@ -114,7 +114,8 @@ should_record_bridge_info(const or_options_t *options)
   return options->BridgeRelay && options->BridgeRecordUsageByCountry;
 }
 
-/** Largest allowable value for last_seen_in_minutes.  (It's a 30-bit field,
+/** Largest allowable value for last_seen_in_minutes or for
+ * last_attempt_in_minutes.  (It's a 30-bit field,
  * so it can hold up to (1u<<30)-1, or 0x3fffffffu.
  */
 #define MAX_LAST_SEEN_IN_MINUTES 0X3FFFFFFFu
@@ -222,6 +223,37 @@ client_history_clear(void)
   }
 }
 
+/** Note an OR connection attempt. This is called when a TCP connection
+ * comes in but has not yet completed the Tor negotiation. We use this
+ * information to keep entries in the geoip cache for the DoS subsystem.
+ *
+ * This won't find any bridge transport connections because at this stage, we
+ * don't know the transport name if any. And so, it only applies to naked OR
+ * connections. */
+void
+geoip_note_client_attempt(const tor_addr_t *addr, time_t now)
+{
+  /* This is only useful to the DoS subsystem so ignore if not enabled. */
+  if (!dos_enabled()) {
+    return;
+  }
+
+  /* We lookup if this address/transport name has already connected
+   * successfully and if so, we will not this attempt time. Else, we do not add
+   * an entry on an attempt so to not clobber the cache with unsuccessful
+   * connections. */
+  clientmap_entry_t *ent = geoip_lookup_client(addr, NULL,
+                                               GEOIP_CLIENT_CONNECT);
+  if (ent) {
+    time_t now_in_min = now / 60;
+    if (now_in_min <= MAX_LAST_SEEN_IN_MINUTES && now >= 0) {
+      ent->dos_stats.conn_stats.last_attempt_in_minutes = now_in_min;
+    } else {
+      ent->dos_stats.conn_stats.last_attempt_in_minutes = 0;
+    }
+  }
+}
+
 /** Note that we've seen a client connect from the IP <b>addr</b>
  * at time <b>now</b>. Ignored by all but bridges and directories if
  * configured accordingly. */
@@ -274,18 +306,43 @@ geoip_note_client_seen(geoip_client_action_t action,
   }
 }
 
+/** Decide whether a clientmap_entry_t from the hashtable is still fresh
++ * enough to use in our stats. It is fresh if we last saw a connection
++ * from it (or a connection attempt, if we recorded one of those)
++ * since cutoff.
++ */
+static int
+client_entry_is_still_fresh(struct clientmap_entry_t *ent,
+                            time_t cutoff_in_seconds)
+{
+  time_t cutoff_in_minutes = cutoff_in_seconds / 60;
+  if (ent->last_seen_in_minutes < cutoff_in_minutes) {
+    /* If the DoS subsystem is disabled, this is an automatic clean up. If it
+     * is enabled, check if the last attempt is below cutoff else keep it
+     * around. */
+    if (!dos_enabled() ||
+        ent->dos_stats.conn_stats.last_attempt_in_minutes <
+          cutoff_in_minutes) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 /** HT_FOREACH helper: remove a clientmap_entry_t from the hashtable if it's
- * older than a certain time. */
+ * older than a certain time and also if there are no existing connections
+ * open from it. We allow non-fresh entries in the clientmap (so we can keep
+ * an accurate total count of open conns for the dos subsystem) and we skip
+ * over the non-fresh ones when we're exporting our stats. */
 static int
 remove_old_client_helper_(struct clientmap_entry_t *ent, void *_cutoff)
 {
-  time_t cutoff = *(time_t*)_cutoff / 60;
-  if (ent->last_seen_in_minutes < cutoff) {
+  if (!client_entry_is_still_fresh(ent, *(time_t*)_cutoff) &&
+      !dos_geoip_any_existing_conns_on_clientmap(ent)) {
     clientmap_entry_free(ent);
     return 1;
-  } else {
-    return 0;
   }
+  return 0;
 }
 
 /** Forget about all clients that haven't connected since <b>cutoff</b>. */

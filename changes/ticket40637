@@ -1,0 +1,4 @@
+  o Minor bugfixes (relay, DoS):
+    - Keep geoip entries from being deleted if the address is still trying to
+      connect but the DoS subsystem refuses them. Fixes bug 40637; bugfix on
+      0.4.6.1-alpha.

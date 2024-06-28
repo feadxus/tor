@@ -905,8 +905,7 @@ dos_geoip_entry_about_to_free(const clientmap_entry_t *geoip_ent)
   SMARTLIST_FOREACH_BEGIN(get_connection_array(), connection_t *, conn) {
     if (conn->type == CONN_TYPE_OR) {
       or_connection_t *or_conn = TO_OR_CONN(conn);
-      if (!tor_addr_compare(&geoip_ent->addr, &TO_CONN(or_conn)->addr,
-                            CMP_EXACT)) {
+      if (!tor_addr_compare(&geoip_ent->addr, &conn->addr, CMP_EXACT)) {
         or_conn->tracked_for_dos_mitigation = 0;
       }
     }
@@ -914,6 +913,37 @@ dos_geoip_entry_about_to_free(const clientmap_entry_t *geoip_ent)
 
  end:
   return;
+}
+
+/** Return true iff we think there are established connections from <b>ent</b>
+ * at this moment. Else return false if there aren't any. Used for deciding
+ * whether it's time to free a clientmap stats entry. */
+bool
+dos_geoip_any_existing_conns_on_clientmap(struct clientmap_entry_t *ent)
+{
+  if (!dos_enabled() || !ent->dos_stats.conn_stats.concurrent_count) {
+    goto end; /* all set to clean+free it */
+  }
+
+  /* We could just return 1 here, because concurrent_count is non-zero.
+   * But for bullet-proofing we do the expensive checks below. */
+  SMARTLIST_FOREACH_BEGIN(get_connection_array(), const connection_t *, conn) {
+    if (conn->type == CONN_TYPE_OR) {
+      const or_connection_t *or_conn = CONST_TO_OR_CONN(conn);
+      if (tor_addr_eq(&ent->addr, &conn->addr) &&
+          or_conn->tracked_for_dos_mitigation) {
+        return true;
+      }
+    }
+  } SMARTLIST_FOREACH_END(conn);
+
+  /* If we get here, it means we have a bug: concurrent_count was non-zero
+   * but we couldn't find any conns that were being tracked! */
+  log_warn(LD_BUG, "When cleaning clientmap, we expected %d conns "
+                   "but we found none.",
+           ent->dos_stats.conn_stats.concurrent_count);
+ end:
+  return false;
 }
 
 /** A new geoip client entry has been allocated, initialize its DoS object. */

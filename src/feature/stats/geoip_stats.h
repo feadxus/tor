@@ -97,6 +97,7 @@ typedef struct clientmap_entry_t {
 
 int should_record_bridge_info(const or_options_t *options);
 
+void geoip_note_client_attempt(const tor_addr_t *addr, time_t now);
 void geoip_note_client_seen(geoip_client_action_t action,
                             const tor_addr_t *addr, const char *transport_name,
                             time_t now);

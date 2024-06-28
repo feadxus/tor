@@ -46,6 +46,12 @@ typedef struct conn_client_stats_t {
    * rules, and thus is marked so defense(s) can be applied. It is
    * synchronized using the approx_time(). */
   time_t marked_until_ts;
+
+  /* Denotes when was the last connection attempt (successful or not). We use
+   * this to decide if we can keep or purge the stats entry in our cache. We
+   * can't rely on the "last_seen_in_minutes" because that is set when a
+   * successful channel is opened meaning TCP connect and Tor negotiation. */
+  time_t last_attempt_in_minutes;
 } conn_client_stats_t;
 
 /* This object is a top level object that contains everything related to the
@@ -75,6 +81,7 @@ int dos_enabled(void);
 void dos_log_heartbeat(void);
 void dos_geoip_entry_init(struct clientmap_entry_t *geoip_ent);
 void dos_geoip_entry_about_to_free(const struct clientmap_entry_t *geoip_ent);
+bool dos_geoip_any_existing_conns_on_clientmap(struct clientmap_entry_t *ent);
 
 void dos_new_client_conn(or_connection_t *or_conn,
                          const char *transport_name);
