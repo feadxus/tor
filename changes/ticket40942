@@ -1,0 +1,3 @@
+  o Minor features (exit relay, DNS):
+    - Add configuration option to disable internal DNS cache.
+      Closes ticket 40942.

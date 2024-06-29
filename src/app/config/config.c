@@ -402,6 +402,7 @@ static const config_var_t option_vars_[] = {
   V(CountPrivateBandwidth,       BOOL,     "0"),
   VAR_IMMUTABLE("DataDirectory", FILENAME, DataDirectory_option, NULL),
   V(DataDirectoryGroupReadable,  BOOL,     "0"),
+  V(DisableDnsCache,             BOOL,     "0"),
   V(DisableOOSCheck,             BOOL,     "1"),
   V(DisableNetwork,              BOOL,     "0"),
   V(DirAllowPrivateAddresses,    BOOL,     "0"),

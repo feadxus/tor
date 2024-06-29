@@ -1095,6 +1095,9 @@ struct or_options_t {
    * report bandwidth observations from this period? */
   int TestingMinTimeToReportBandwidth;
 
+  /** Bool (default: 0): Tells if exit-node dns caching should be disabled. */
+  int DisableDnsCache;
+
   /**
    * Configuration objects for individual modules.
    *

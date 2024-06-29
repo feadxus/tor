@@ -2265,6 +2265,11 @@ is non-zero):
     relay or bridge.  (Really, everybody running a relay or bridge should set
     it.)
 
+[[DisableDnsCache]] **DisableDnsCache** **0**|**1**::
+    This option disables the internal DNS cache used by exit nodes. Only enable
+    this option if you already make use your own cachind DNS server.
+    (Default: 0)
+
 [[DisableOOSCheck]] **DisableOOSCheck** **0**|**1**::
     This option disables the code that closes connections when Tor notices
     that it is running low on sockets. Right now, it is on by default,
