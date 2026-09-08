@@ -5,7 +5,7 @@ FROM debian:trixie-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. 安装编译所需的工具链与依赖开发库（增加了 systemtap-sdt-dev 满足 USDT 需求）
+# 1. 安装编译所需的工具链与依赖开发库（补全 python3）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     automake \
     libtool \
     pkg-config \
+    python3 \
     libevent-dev \
     libssl-dev \
     zlib1g-dev \
     libsystemd-dev \
-    systemtap-sdt-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src
@@ -34,16 +34,13 @@ WORKDIR /usr/src/tor
 # 3. 生成配置脚本
 RUN ./autogen.sh
 
-# 4. 执行 configure (去掉了 --enable-fatal-warnings，避免 GCC 新版本的 Warning 导致编译中断)
+# 4. 执行规范的 configure（移除了可能导致报错的 USDT 和过度 hardening 标志）
 RUN ./configure \
     --prefix=/usr/local \
-    --enable-expensive-hardening \
-    --enable-pic \
     --disable-silent-rules \
     --disable-system-torrc \
     --with-tor-user=debian-tor \
     --with-tor-group=debian-tor \
-    --enable-tracing-instrumentation-usdt \
     --enable-systemd
 
 # 5. 执行全速编译与安装
