@@ -1,11 +1,10 @@
-
-# 使用 Debian 13 (Trixie) 作为基础镜像
+# 使用 Debian 13 (Trixie) 官方精简镜像
 FROM debian:trixie-slim
 
-# 避免 apt 安装过程中的交互提示
+# 避免 apt 安装过程中的交互式提示
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 安装 Tor 及依赖
+# 安装 Tor 及基础证书，清理 apt 缓存以精简体积
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         tor \
@@ -13,10 +12,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 暴露 Tor 默认端口（SOCKS 代理: 9050, 控制端口: 9051）
+# 暴露 Tor 服务的默认端口 (SOCKS: 9050, Control: 9051)
 EXPOSE 9050 9051
 
-# 切换到 Tor 内置低权限用户
+# 切换为系统内置的低权限 debian-tor 用户运行，保证容器安全性
 USER debian-tor
 
 # 启动 Tor 服务
