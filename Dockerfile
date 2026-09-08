@@ -31,7 +31,6 @@ RUN git clone https://gitlab.torproject.org/tpo/core/tor.git && \
 WORKDIR /usr/src/tor
 
 # 3. 生成配置脚本、规范化配置并执行全速编译
-# (已移除 --enable-coverage 避免生产环境性能损失，移除 sudo)
 RUN ./autogen.sh && \
     ./configure \
         --prefix=/usr/local \
@@ -54,25 +53,25 @@ FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. 仅安装 Tor 运行所需的运行时共享动态库（不含开发头文件和编译器）
-# 并创建 debian-tor 用户与组
+# 1. 安装 Tor 运行所需的通用运行库
+# 2. 使用标准的 groupadd 和 useradd 创建 debian-tor 用户（修正 exit code 127）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libevent-2.1-7t64 \
-    libssl3t64 \
+    libevent-2.1-7 \
+    libssl3 \
     zlib1g \
     libsystemd0 \
     && rm -rf /var/lib/apt/lists/* \
-    && addgroup --system debian-tor \
-    && adduser --system --disabled-password --no-create-home --ingroup debian-tor debian-tor
+    && groupadd --system debian-tor \
+    && useradd --system --no-create-home --gid debian-tor debian-tor
 
-# 2. 从 builder 阶段仅复制编译好的可执行程序与配置产物
+# 3. 从 builder 阶段复制编译产物
 COPY --from=builder /usr/local/bin/tor /usr/local/bin/tor
 COPY --from=builder /usr/local/bin/tor-resolve /usr/local/bin/tor-resolve
 COPY --from=builder /usr/local/bin/torify /usr/local/bin/torify
 COPY --from=builder /usr/local/etc/tor /usr/local/etc/tor
 
-# 3. 暴露端口并切换低权限用户运行
+# 4. 暴露端口并切换低权限用户运行
 EXPOSE 9050 9051
 
 USER debian-tor
