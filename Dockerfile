@@ -5,7 +5,7 @@ FROM debian:trixie-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. 安装编译所需的工具链与依赖开发库（补全 python3）
+# 1. 安装编译所需的工具链与依赖开发库
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
@@ -34,11 +34,13 @@ WORKDIR /usr/src/tor
 # 3. 生成配置脚本
 RUN ./autogen.sh
 
-# 4. 执行规范的 configure（移除了可能导致报错的 USDT 和过度 hardening 标志）
+# 4. 执行 configure（显式添加 --disable-asciidoc 和 --disable-manpage 跳过手册编译）
 RUN ./configure \
     --prefix=/usr/local \
     --disable-silent-rules \
     --disable-system-torrc \
+    --disable-asciidoc \
+    --disable-manpage \
     --with-tor-user=debian-tor \
     --with-tor-group=debian-tor \
     --enable-systemd
