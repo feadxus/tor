@@ -1,7 +1,8 @@
 # ==========================================
 # 阶段 1: 编译 Go 语言客户端 (Snowflake + Webtunnel)
 # ==========================================
-FROM golang:1.22-alpine AS go-builder
+# 升级到 golang:1.24-alpine 满足 snowflake 对 Go >= 1.24.0 的要求
+FROM golang:1.24-alpine AS go-builder
 
 WORKDIR /usr/src
 
@@ -116,7 +117,7 @@ COPY --from=c-builder /usr/local/bin/tor-resolve /usr/local/bin/tor-resolve
 COPY --from=c-builder /usr/local/bin/torify /usr/local/bin/torify
 COPY --from=c-builder /usr/local/etc/tor /usr/local/etc/tor
 
-# 2. 复制 Torsocks 编译产物（包含二进制程序、库文件以及配置文件）
+# 2. 复制 Torsocks 编译产物
 COPY --from=c-builder /usr/local/bin/torsocks /usr/local/bin/torsocks
 COPY --from=c-builder /usr/local/lib/torsocks /usr/local/lib/torsocks
 COPY --from=c-builder /usr/local/etc/tor/torsocks.conf /usr/local/etc/tor/torsocks.conf
