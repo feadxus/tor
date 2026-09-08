@@ -5,7 +5,7 @@ FROM debian:trixie-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. 安装编译所需的工具链与依赖开发库
+# 1. 安装编译所需的工具链与依赖开发库（增加了 systemtap-sdt-dev 满足 USDT 需求）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     zlib1g-dev \
     libsystemd-dev \
+    systemtap-sdt-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src
@@ -30,21 +31,23 @@ RUN git clone https://gitlab.torproject.org/tpo/core/tor.git && \
 
 WORKDIR /usr/src/tor
 
-# 3. 生成配置脚本、规范化配置并执行全速编译
-RUN ./autogen.sh && \
-    ./configure \
-        --prefix=/usr/local \
-        --enable-expensive-hardening \
-        --enable-fatal-warnings \
-        --enable-pic \
-        --disable-silent-rules \
-        --disable-system-torrc \
-        --with-tor-user=debian-tor \
-        --with-tor-group=debian-tor \
-        --enable-tracing-instrumentation-usdt \
-        --enable-systemd && \
-    make -j$(nproc) && \
-    make install
+# 3. 生成配置脚本
+RUN ./autogen.sh
+
+# 4. 执行 configure (去掉了 --enable-fatal-warnings，避免 GCC 新版本的 Warning 导致编译中断)
+RUN ./configure \
+    --prefix=/usr/local \
+    --enable-expensive-hardening \
+    --enable-pic \
+    --disable-silent-rules \
+    --disable-system-torrc \
+    --with-tor-user=debian-tor \
+    --with-tor-group=debian-tor \
+    --enable-tracing-instrumentation-usdt \
+    --enable-systemd
+
+# 5. 执行全速编译与安装
+RUN make -j$(nproc) && make install
 
 # ==========================================
 # 阶段 2: 运行时精简镜像 (Runtime)
@@ -54,7 +57,7 @@ FROM debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1. 安装 Tor 运行所需的通用运行库
-# 2. 使用标准的 groupadd 和 useradd 创建 debian-tor 用户（修正 exit code 127）
+# 2. 创建 debian-tor 用户
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libevent-2.1-7 \
