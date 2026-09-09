@@ -1,7 +1,6 @@
 # ==========================================
-# 阶段 1: 编译 Go 语言客户端 (Snowflake + Webtunnel)
+# 阶段 1: 编译 Go 语言客户端 (Snowflake + Webtunnel + Lyrebird)
 # ==========================================
-# 升级到 golang:1.24-alpine 满足 snowflake 对 Go >= 1.24.0 的要求
 FROM golang:1.24-alpine AS go-builder
 
 WORKDIR /usr/src
@@ -29,6 +28,17 @@ RUN git clone https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transp
 
 WORKDIR /usr/src/webtunnel/main/client
 RUN CGO_ENABLED=0 go build -v -trimpath -ldflags="-s -w" -o webtunnel-client
+
+# ------------------------------------------
+# 1.3 编译 Lyrebird Client (obfs4/meek 混淆插件)
+# ------------------------------------------
+WORKDIR /usr/src
+RUN git clone https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird.git && \
+    cd lyrebird && \
+    git checkout lyrebird-0.5.0
+
+WORKDIR /usr/src/lyrebird
+RUN CGO_ENABLED=0 go build -v -trimpath -ldflags="-s -w" -o lyrebird ./cmd/lyrebird
 
 # ==========================================
 # 阶段 2: 编译 C 语言组件 (Tor + Torsocks)
@@ -122,9 +132,10 @@ COPY --from=c-builder /usr/local/bin/torsocks /usr/local/bin/torsocks
 COPY --from=c-builder /usr/local/lib/torsocks /usr/local/lib/torsocks
 COPY --from=c-builder /usr/local/etc/tor/torsocks.conf /usr/local/etc/tor/torsocks.conf
 
-# 3. 复制 Go 语言编译的混淆插件 (Snowflake + Webtunnel)
+# 3. 复制 Go 语言编译的混淆插件 (Snowflake + Webtunnel + Lyrebird)
 COPY --from=go-builder /usr/src/snowflake/client/snowflake-client /usr/local/bin/snowflake-client
 COPY --from=go-builder /usr/src/webtunnel/main/client/webtunnel-client /usr/local/bin/webtunnel-client
+COPY --from=go-builder /usr/src/lyrebird/lyrebird /usr/local/bin/lyrebird
 
 # 暴露端口 (SOCKS: 9050, Control: 9051)
 EXPOSE 9050 9051
