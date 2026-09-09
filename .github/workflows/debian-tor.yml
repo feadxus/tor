@@ -15,11 +15,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣. 设置 QEMU(跨平台模拟器,支持在 amd64 上编译 arm64 架构)
+      # 2️⃣. 设置 QEMU
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3️⃣. 设置 Docker Buildx(多架构镜像构建核心)
+      # 3️⃣. 设置 Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -30,7 +30,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 5️⃣. 提取元数据(自动处理标签)
+      # 5️⃣. 提取元数据
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -46,9 +46,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          # 核心重点：声明同时构建 amd64 和 arm64
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
